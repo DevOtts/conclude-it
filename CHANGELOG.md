@@ -3,6 +3,35 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## 1.1.0 — 2026-08-26
+
+New: **the first-run setup interview** — per-repo memory, saved inside the repo.
+
+The first close in a repo now resolves five facts before anything depends on
+them: **docs home** · **second brain path** (Obsidian or similar) · **second
+brain scope** (global / per-project — or "just say the word" and conclude-it
+inspects the vault and *proposes* where session knowledge is filed, with the
+guess labeled as a guess) · **deploy skill** (recommends creating or pointing to
+a `<project>-deploy` skill with the repo's exact deploy instructions, and offers
+to scaffold it) · **debrief skill** (same shape: `<project>-debrief`, else the
+bundled generic).
+
+- **Detect first, then ask**: candidate docs folders, existing
+  `*deploy*`/`*debrief*` skills, and vault signals are pre-scanned so the ONE
+  batched interview arrives pre-answered for confirmation. Repos whose existing
+  agent instructions already answer the questions are treated as configured —
+  no nagging.
+- **Stored in the repo**, not globally: a `## conclude-it — project setup`
+  block in `CLAUDE.md` / `AGENTS.md` / `.conclude-it/config.md`. A different
+  repo without the block interviews again there. Global defaults are written
+  only when the user explicitly says "save this globally", and per-repo blocks
+  always override them.
+- **Wired into the flow**: Step 2 runs the configured `debrief_skill` (the
+  bundled `session-debrief`'s Phase 0 reads the block too), Step 2.5 mirrors
+  the ledger card per the second-brain scope, ship-pipeline S2 deploys via the
+  configured `deploy_skill` — and every `none` degrades inline with the
+  create-a-skill recommendation repeated once in the verdict.
+
 ## 1.0.1 — 2026-08-26
 
 Positioning + cross-agent portability release. No behavior change on Claude Code.

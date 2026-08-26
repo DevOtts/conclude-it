@@ -11,11 +11,13 @@ description: >-
   session-history ledger card, mid-flight + controlled-sessions verification,
   idle-subagent reaping, own-footprint sweep including secrets at rest, a local
   CONCLUDE_REPORT.html double-check report, and an honest safe-to-exit verdict.
-  Fail-closed gates, no fake greens. Trigger on "/conclude-it", "conclude", "exit",
-  "close this session", "wrap up and exit", "I'm done for now", "end session",
-  "clean up before I leave", "ship it and close", or "is it safe to exit". It prepares
-  the quit; the user types it.
-version: 1.0.1
+  Fail-closed gates, no fake greens. First run in a repo: a five-question setup
+  interview (docs home, second brain + scope, deploy skill, debrief skill) saved
+  INSIDE the repo — once per repo, global only on explicit request. Trigger on
+  "/conclude-it", "conclude", "exit", "close this session", "wrap up and exit",
+  "I'm done for now", "end session", "clean up before I leave", "ship it and close",
+  or "is it safe to exit". It prepares the quit; the user types it.
+version: 1.1.0
 license: MIT
 author: DevOtts
 author_url: https://github.com/DevOtts
@@ -37,6 +39,11 @@ unmerged work is stranded, finished subagents linger as RAM-holding zombies —
 and, worst, features get filed as "done" that were never proven in prod. This
 skill sequences the close so none of that survives it.
 
+**First run in a repo:** a five-question setup interview (docs home, second
+brain + scope, deploy skill, debrief skill) — answered once, saved **inside the
+repo**, asked again only in a repo without the block. See the setup section
+below.
+
 **One command, two legs.** Step 0 triages mechanically; the user never chooses:
 
 - **Ship-shaped session** (deploys ran, feature work at the merge boundary, a
@@ -46,6 +53,51 @@ skill sequences the close so none of that survives it.
   **close core** only.
 - **Ambiguous** → ask ONE question ("conclude — ship to prod — or just close?").
   Never deploy on a guess.
+
+## First run in a repo — the setup interview (once per repo)
+
+Before the first close in a repo, resolve five facts. They are **per-repo
+memory, saved inside the repo** — never global unless the user says so. Look
+for the block `## conclude-it — project setup` in `CLAUDE.md` → `AGENTS.md` →
+`.conclude-it/config.md`; found (or derivable from existing agent
+instructions) → use silently. Missing → **detect first** (candidate docs
+folders, `*deploy*`/`*debrief*` skills, vault signals), then ask ONE batch of
+five questions, each pre-filled with what detection found:
+
+1. **Docs home** — "Where is this project's documentation folder? Give me the path."
+2. **Second brain** — "Do you keep a second brain (Obsidian or similar)? Give me the path." (or: none)
+3. **Second-brain scope** — "Global across projects, or per-project? Explain
+   the layout — or just say the word and I'll inspect it and guess where
+   session knowledge should be filed." Record a guess AS a guess; propose it
+   for approval, never silently trust it.
+4. **Deploy** — "I use generic deploy steps by default. Create — or point me
+   to — a `<project>-deploy` skill with this repo's exact instructions and
+   I'll follow it every ship." Record the skill, or `none` + the
+   recommendation; offer to scaffold it now.
+5. **Debrief** — "Create — or point me to — a `<project>-debrief` skill that
+   explains how your documentation structure works and I'll follow those
+   guidelines." Record it; else the generic debrief flow.
+
+Write the answers into the repo (the file it already uses — `CLAUDE.md`, else
+`AGENTS.md`, else create `CLAUDE.md`):
+
+```markdown
+## conclude-it — project setup
+- docs_home: docs/
+- second_brain: ~/Vault/MyBrain            # or: none
+- second_brain_scope: global               # global | per-project | none
+- second_brain_notes: session knowledge → wiki/projects/<slug>/ (guessed — confirm)
+- deploy_skill: acme-deploy                # or: none (recommended: create acme-deploy)
+- debrief_skill: acme-debrief              # or: generic
+- configured: YYYY-MM-DD
+```
+
+If the user explicitly says "save this globally", ALSO write the answers as
+user-level defaults; per-repo blocks always override. Consumers: the debrief
+step runs `debrief_skill` against `docs_home`; the ledger card mirrors to the
+second brain only when its scope says global; the ship pipeline deploys via
+`deploy_skill` — `none` values degrade inline and the verdict repeats the
+create-a-skill recommendation once.
 
 ## The ship pipeline (ship-shaped sessions only)
 

@@ -1,6 +1,6 @@
 ---
 name: conclude-it
-description: Close a Claude Code session the right way — and if the session shipped something, prove it in prod first. The single front door for EVERY session close. A mechanical Step-0 triage detects ship-shaped sessions (deploys run, feature work merged, DoD met without prod verification) and runs the ship pipeline first (references/ship-pipeline.md — local test gate → merge+deploy → prod gate → archive plan docs → backlog → PM board), then the session-close core every session gets — knowledge debrief (with supersession sweep), session-history ledger card, mid-flight + controlled-sessions verification, idle-subagent reaping, own-footprint sweep (incl. secrets at rest), stop-gate, CONCLUDE_REPORT.html for ship sessions, honest safe-to-exit verdict. Use when the user says "conclude", "/conclude-it", "exit", "close this session", "wrap up and exit", "I'm done for now", "end session", "shut it down", "clean up before I leave", "ship it and close", "it's built — ship it and wrap up", "did you clean up after yourself", or asks whether it's safe to exit. It prepares the quit; the user types it.
+description: Close a Claude Code session the right way — and if the session shipped something, prove it in prod first. The single front door for EVERY session close. A mechanical Step-0 triage detects ship-shaped sessions (deploys run, feature work merged, DoD met without prod verification) and runs the ship pipeline first (references/ship-pipeline.md — local test gate → merge+deploy → prod gate → archive plan docs → backlog → PM board), then the session-close core every session gets — knowledge debrief (with supersession sweep), session-history ledger card, mid-flight + controlled-sessions verification, idle-subagent reaping, own-footprint sweep (incl. secrets at rest), stop-gate, CONCLUDE_REPORT.html for ship sessions, honest safe-to-exit verdict. Use when the user says "conclude", "/conclude-it", "exit", "close this session", "wrap up and exit", "I'm done for now", "end session", "shut it down", "clean up before I leave", "ship it and close", "it's built — ship it and wrap up", "did you clean up after yourself", or asks whether it's safe to exit. First run in a repo: a five-question setup interview (docs home, second brain + scope, deploy skill, debrief skill) saved INSIDE the repo — asked once per repo, global only on explicit request. It prepares the quit; the user types it.
 author: DevOtts
 author_url: https://github.com/DevOtts
 ---
@@ -61,6 +61,69 @@ must not invent. Require evidence back (paths written, counts), never a bare
 "done". For a genuinely tiny close (2–3 file ops), inline is cheaper than
 spawning — do it inline and say so.
 
+## First run in a repo — the setup interview (once per repo)
+
+Before the first close in a repo, conclude-it needs five facts. They are
+**per-repo memory, saved inside the repo** — never global unless the user says
+so. On every invocation, resolve the config first:
+
+1. Look for the block `## conclude-it — project setup` in `CLAUDE.md` →
+   `AGENTS.md` → `.conclude-it/config.md` at the repo root.
+2. **Found** — or the answers are already derivable from the repo's existing
+   agent instructions (a declared docs home, a named deploy/debrief skill) →
+   use it silently and continue to Step 0. Opening a different repo/folder
+   without the block → the interview runs again there.
+3. **Missing** → run the interview NOW, before anything that depends on it.
+
+**Detect first, then ask.** Pre-scan so every question arrives with proposed
+answers: candidate docs folders (`docs/`, `documentation/`, `wiki/`),
+`.claude/skills/*deploy*` and `*debrief*` matches, vault signals (an
+`.obsidian/` dir in common locations). Never ask what detection already
+answered — present it for confirmation. Then ask the five questions in ONE
+batch:
+
+1. **Docs home** — "Where is this project's documentation folder? Give me the
+   path." (Offer detected candidates; offer to create `docs/` if none.)
+2. **Second brain** — "Do you keep a second brain — an Obsidian vault or
+   similar? Give me the path." (Or: none.)
+3. **Second-brain scope** — "Is your second brain global (one vault across all
+   projects) or per-project? Explain the setup — or just say the word and I'll
+   inspect it and guess where session knowledge should be filed." A guess is
+   recorded AS a guess and proposed for approval — never silently trusted.
+4. **Deploy** — "I use generic deploy steps by default. I recommend you create
+   — or point me to — a `<project>-deploy` skill with this repo's exact deploy
+   instructions, and I'll follow it on every ship." Record the named skill, or
+   `none` plus the recommendation. Offer to scaffold the skill now from what
+   this session already knows about deploying this repo.
+5. **Debrief** — same shape: "create — or point me to — a `<project>-debrief`
+   skill that explains how your documentation structure works, and I'll follow
+   those guidelines." Record it; else the bundled generic `session-debrief`.
+
+Write the block (prefer the file the repo already uses — `CLAUDE.md`, else
+`AGENTS.md`; create `CLAUDE.md` if it has neither):
+
+```markdown
+## conclude-it — project setup
+- docs_home: docs/
+- second_brain: ~/Vault/MyBrain            # or: none
+- second_brain_scope: global               # global | per-project | none
+- second_brain_notes: session knowledge → wiki/projects/<slug>/ (guessed — confirm)
+- deploy_skill: acme-deploy                # or: none (recommended: create acme-deploy)
+- debrief_skill: acme-debrief              # or: session-debrief (generic)
+- configured: YYYY-MM-DD
+```
+
+**Global only on request:** if the user explicitly says "save this globally",
+ALSO write the answers as defaults in the user-level instructions
+(`~/.claude/CLAUDE.md` or the agent's equivalent). Per-repo blocks always
+override the global defaults.
+
+**Consumers:** Step 2 runs `debrief_skill`; Step 2.5 mirrors the ledger card to
+the second brain only when `second_brain_scope: global` (or the notes say so);
+ship-pipeline S2 deploys via `deploy_skill`. Where a value is `none`, the step
+degrades as specified — and the verdict repeats the recommendation once (e.g.
+"deploy ran inline — consider creating `acme-deploy`").
+
 ## Step 0 — Triage: plain close or ship-close?
 
 Decide from **mechanical signals**, not vibes. Check, in order:
@@ -104,10 +167,12 @@ re-run: confirm which pages it touched and move on. One debrief per session.
 Otherwise run the project's debrief skill so patterns, gotchas, decisions, and
 fixes land in durable storage BEFORE teardown:
 
-- Prefer a **project-specific** debrief (detect via
-  `.claude/skills/*session-debrief*` at the repo root); else the generic
-  **`session-debrief`** bundled with this plugin; else capture inline (dated
-  session-log entry + a memory note per the user's conventions).
+- Run the **`debrief_skill` named in the setup block**; if none is configured,
+  detect a project-specific one (`.claude/skills/*debrief*` at the repo root);
+  else the generic **`session-debrief`** bundled with this plugin (pointed at
+  the configured `docs_home`); else capture inline (dated session-log entry + a
+  memory note per the user's conventions) — and repeat the "create a
+  `<project>-debrief` skill" recommendation once in the verdict.
 - **Require the supersession line.** A debrief for a session that changed
   behaviour must report both "pages promoted" AND "contradictions swept: N pages
   updated/deprecated" (the promotion rule's supersede sweep). A debrief that
@@ -125,9 +190,10 @@ catalog future sessions read INSTEAD of distilling transcripts:
 
 - **Primary:** `<repo>/.agents/history/` at the project root (create the folder +
   a stub INDEX.md on first use).
-- **Optional global mirror:** if the user's `CLAUDE.md` declares a global
-  session-history location (useful across many repos and multiple accounts),
-  copy the card there and append that INDEX row too. Don't invent one.
+- **Optional global mirror:** if the setup block declares a global second brain
+  (`second_brain_scope: global`) or the user's `CLAUDE.md` declares a global
+  session-history location, copy the card there (per `second_brain_notes`) and
+  append that INDEX row too. Don't invent one.
 
 Unlike the debrief, this runs for EVERY session, even trivial ones (a 3-line card
 is fine) — the catalog's value is completeness ("which session did X?" must
@@ -332,6 +398,9 @@ Then STOP. Do not run the quit command — the user takes it themselves.
   opened in the browser; and never let it show only the green half.
 - Don't invent a PM surface, backlog convention, archive convention, or
   task-state gate the project doesn't have.
+- Don't re-run the setup interview in a repo whose setup block (or equivalent
+  existing declarations) already answers it — and never write the answers
+  globally unless the user explicitly asks.
 - Don't quit the process yourself; you prepare the exit, the user takes it.
 
 ---

@@ -199,6 +199,30 @@ skills/instructions directory.
 Also answers to plain language: *"close this session"*, *"wrap up and exit"*,
 *"ship it and close"*, *"I'm done for now"*, *"is it safe to exit?"*.
 
+## First run — conclude-it interviews your repo (once)
+
+The first time you close a session in a repo, conclude-it runs a **five-question
+setup interview** — and it detects before it asks, so most questions arrive
+pre-answered for you to confirm:
+
+1. **Where is your documentation folder?**
+2. **Do you keep a second brain** (Obsidian or similar)? Path?
+3. **Is it global or per-project?** Explain the layout — or just say the word
+   and it inspects the vault and *proposes* where session knowledge should be
+   filed (a guess is always labeled as a guess, never silently trusted).
+4. **Deploy** — it recommends you create (or point it to) a `<project>-deploy`
+   skill with this repo's exact deploy instructions, and offers to scaffold it
+   from what it already knows. Until then, deploys run inline via your
+   documented path.
+5. **Debrief** — same shape: a `<project>-debrief` skill describing how your
+   docs structure works; otherwise the bundled generic `session-debrief`.
+
+The answers are saved as a small block **inside the repo** (`CLAUDE.md` /
+`AGENTS.md` / `.conclude-it/config.md`) — per-repo memory, committable,
+reviewable. Open a different repo and it asks again *there*; it never writes
+your answers globally unless you explicitly say "save this globally". Every
+later close reads the block silently and gets straight to work.
+
 ## How it works
 
 ```

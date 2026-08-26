@@ -1,4 +1,19 @@
-# QA — specification walkthroughs (v1.0.0)
+# QA — specification walkthroughs (v1.1.0)
+
+## Scenario 0 — first run in an unconfigured repo (v1.1.0)
+
+**Setup:** a repo with no `## conclude-it — project setup` block and no
+equivalent declarations in `CLAUDE.md`/`AGENTS.md`.
+
+| Check | Expected behavior |
+|---|---|
+| Trigger | The interview runs BEFORE any step that depends on its answers (debrief, ledger mirror, deploy). |
+| Detection | Docs-folder candidates, `*deploy*`/`*debrief*` skills, and vault signals are scanned first; questions arrive pre-answered for confirmation (verify: no question asks something detection already found). |
+| Batching | All five questions in ONE gate, not five round-trips. |
+| Guessing | A "you figure it out" second-brain answer produces a proposal labeled as a guess; nothing is written to the vault before approval. |
+| Persistence | The block lands in the repo (`CLAUDE.md` preferred), with `configured:` date. NOT in any global file unless the user said "save this globally". |
+| Re-entry | A second `/conclude-it` in the same repo asks nothing; the same command in a different unconfigured repo interviews again. |
+
 
 Two dry-run walkthroughs of the skill as specified. **These are design
 walkthroughs, not executed transcripts** — they document the expected behavior

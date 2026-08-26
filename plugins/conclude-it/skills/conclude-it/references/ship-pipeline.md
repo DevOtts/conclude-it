@@ -57,11 +57,14 @@ Only reachable with a green (or explicitly-accepted) local gate.
 1. **Merge hygiene.** Per repo touched: work committed and on/merged into the
    deploy branch. Surface any unmerged branch or uncommitted change BEFORE
    deploying — a deploy that strands local work is a silent regression.
-2. **Deploy via the project's deploy skill** — detect it in the project's
-   `.claude/skills/` and user skills (names like `deploy`, `*cicd-deploy*`,
-   `<project>-deploy`) and invoke by name; honor its own fail-closed pre-deploy
-   gate. If none exists, use the project's documented deploy path (CI trigger,
-   `vercel --prod`, deploy script) and note in the report that deploy ran inline.
+2. **Deploy via the `deploy_skill` named in the repo's conclude-it setup
+   block** (see SKILL.md — the first-run interview records it); if none is
+   configured, detect one in the project's `.claude/skills/` and user skills
+   (names like `deploy`, `*cicd-deploy*`, `<project>-deploy`) and invoke by
+   name; honor its own fail-closed pre-deploy gate. If none exists, use the
+   project's documented deploy path (CI trigger, `vercel --prod`, deploy
+   script), note in the report that deploy ran inline, and repeat the "create a
+   `<project>-deploy` skill" recommendation once in the verdict.
 3. **Never** run irreversible destructive steps (dropping/rewriting prod data,
    volume deletion) without an explicit yes — conclude-it's authorization does
    not cover them.

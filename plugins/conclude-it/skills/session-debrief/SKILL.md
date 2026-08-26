@@ -33,6 +33,10 @@ more than it saves; say which you chose.
 
 Do this BEFORE surveying. The debrief is useless if it writes to the wrong place.
 
+0. **Check the conclude-it setup block first** — `## conclude-it — project
+   setup` in `CLAUDE.md` / `AGENTS.md` / `.conclude-it/config.md`. If it
+   declares `docs_home` (and optionally `second_brain` + scope/notes for Phase
+   4), use those and skip to Phase 1.
 1. **Check the project's `CLAUDE.md`** for a `Docs home:` pointer; if declared,
    use it and skip to Phase 1.
 2. **Look for conventional locations** (`docs/`, `documentation/`, `wiki/`) if
@@ -140,8 +144,10 @@ existing authorship frontmatter or footers.
 
 ## Phase 4 — Update the knowledge vault (optional)
 
-Only if the user keeps a vault (an Obsidian/wiki tree declared in their
-`CLAUDE.md` or project instructions) — skip gracefully otherwise.
+Only if the user keeps a vault (the `second_brain` path from the conclude-it
+setup block, or an Obsidian/wiki tree declared in their `CLAUDE.md` / project
+instructions) — skip gracefully otherwise. Honor `second_brain_notes` for where
+session knowledge is filed; if it's marked as a guess, confirm before writing.
 
 **Thin-pointer rule:** vault technical pages for a project are thin
 current-state summaries pointing at the canonical project doc. Fix the project
