@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "devotts",
+  "owner": {
+    "name": "DevOtts",
+    "url": "https://github.com/DevOtts"
+  },
+  "description": "DevOtts marketplace for Claude Code plugins. Add this repo, then install conclude-it (the session-close + ship ritual) — shares the `devotts` namespace with plan-it, build-it, review-it, and prompt-it.",
+  "plugins": [
+    {
+      "name": "conclude-it",
+      "source": "./plugins/conclude-it",
+      "version": "1.0.0",
+      "description": "The single front door for every session close — the ship stage of the *-it lifecycle. Step-0 triage detects ship-shaped sessions and runs the ship pipeline first (local test gate → merge+deploy → prod gate → archive → backlog → PM), then the session-close core every session gets: debrief with supersession sweep, ledger card, mid-flight verification, subagent reaping, footprint sweep incl. secrets at rest, local CONCLUDE_REPORT.html, honest safe-to-exit verdict.",
+      "author": {
+        "name": "DevOtts",
+        "url": "https://github.com/DevOtts"
+      },
+      "homepage": "https://github.com/DevOtts/conclude-it",
+      "license": "MIT",
+      "keywords": [
+        "session-close",
+        "ship-it",
+        "deploy-gate",
+        "prod-verification",
+        "knowledge-capture",
+        "cleanup",
+        "claude-code"
+      ]
+    }
+  ]
+}

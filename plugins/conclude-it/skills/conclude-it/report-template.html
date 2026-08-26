@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  :root{
+    --bg:#f6f4ef; --card:#ffffff; --ink:#1f2430; --muted:#6b7280; --line:#e5e1d8;
+    --accent:#0e7490; --act:#b45309; --gate:#b91c1c; --ok:#15803d; --chip:#eef2f7; --hold:#7c3aed;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --bg:#14161c; --card:#1d2129; --ink:#e8e6e1; --muted:#9aa1ad; --line:#2b303b;
+           --accent:#38bdf8; --act:#fbbf24; --gate:#f87171; --ok:#4ade80; --chip:#262b35; --hold:#a78bfa; }
+  }
+  :root[data-theme="dark"]{ --bg:#14161c; --card:#1d2129; --ink:#e8e6e1; --muted:#9aa1ad; --line:#2b303b;
+           --accent:#38bdf8; --act:#fbbf24; --gate:#f87171; --ok:#4ade80; --chip:#262b35; --hold:#a78bfa; }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:2.5rem 1rem}
+  main{max-width:900px;margin:0 auto;position:relative}
+  h1{font-size:1.5rem;margin:0 0 .25rem;text-wrap:balance;padding-right:6rem} .sub{color:var(--muted);margin:0 0 2rem}
+  h2{font-size:1.05rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+     margin:2.2rem 0 .8rem;border-bottom:1px solid var(--line);padding-bottom:.4rem}
+  #theme-toggle{position:absolute;top:0;right:0;background:var(--card);border:1px solid var(--line);
+    color:var(--muted);border-radius:99px;padding:.3rem .8rem;font:inherit;font-size:.8rem;
+    cursor:pointer;display:inline-flex;align-items:center;gap:.4rem}
+  #theme-toggle:hover{color:var(--ink)} #theme-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+        padding:1rem 1.1rem;margin-bottom:.75rem}
+  .card h3{margin:0 0 .35rem;font-size:1rem;display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap}
+  .id{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+  .badge{font-size:.72rem;font-weight:700;letter-spacing:.03em;border-radius:99px;
+         padding:.1rem .55rem;text-transform:uppercase}
+  .b-ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+  .b-open{background:color-mix(in srgb,var(--gate) 14%,transparent);color:var(--gate)}
+  .b-hold{background:color-mix(in srgb,var(--hold) 14%,transparent);color:var(--hold)}
+  .b-act{background:color-mix(in srgb,var(--act) 15%,transparent);color:var(--act)}
+  .rename{margin-left:auto;font-size:.75rem;color:var(--muted)}
+  .rename code{font-size:.95em}
+  .card p{margin:.25rem 0}
+  .card ul{margin:.3rem 0 .3rem;padding-left:1.25rem} .card li{margin:.18rem 0}
+  code{background:var(--chip);border-radius:4px;padding:.05rem .35rem;font-size:.85em;word-break:break-all}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+        border-radius:10px;overflow:hidden;font-size:.9rem}
+  th,td{text-align:left;padding:.5rem .8rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600} tr:last-child td{border-bottom:none}
+  .overflow{overflow-x:auto}
+  .test{margin-top:.6rem;border-top:1px dashed var(--line);padding-top:.55rem;font-size:.88rem}
+  .test b{color:var(--accent);text-transform:uppercase;font-size:.75rem;letter-spacing:.04em}
+  .test ul{margin:.3rem 0 0;padding-left:1.25rem}
+  .warn{color:var(--act)} .crit{color:var(--gate);font-weight:600}
+  details.more{margin-top:.7rem;border-top:1px dashed var(--line);padding-top:.55rem}
+  details.more>summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:.88rem;
+    list-style:none;display:inline-flex;align-items:center;gap:.4rem}
+  details.more>summary::before{content:"▸";transition:transform .15s}
+  details.more[open]>summary::before{transform:rotate(90deg)}
+  .srcnote{font-size:.78rem;color:var(--muted);margin:.6rem 0 .3rem}
+  .mdout{background:color-mix(in srgb,var(--chip) 55%,transparent);border:1px solid var(--line);
+         border-radius:8px;padding:.9rem 1rem;font-size:.87rem;overflow-x:auto}
+  .mdout h1,.mdout h2,.mdout h3{all:revert;font-size:1.02em;margin:.8em 0 .3em;border:none;
+    text-transform:none;letter-spacing:0;color:var(--ink)}
+  .mdout h1{font-size:1.12em}
+  .mdout pre{background:var(--chip);padding:.6rem .7rem;border-radius:6px;overflow-x:auto}
+  .mdout blockquote{border-left:3px solid var(--accent);margin:.5em 0;padding:.1em .8em;color:var(--muted)}
+  .mdout ul{padding-left:1.3em} .mdout li{margin:.15em 0}
+  .mdout hr{border:none;border-top:1px solid var(--line);margin:.8em 0}
+  .mdout a{color:var(--accent)}
+  .mdout table{font-size:.85em;margin:.5em 0}
+  .mdout td,.mdout th{padding:.35rem .6rem}
+  @media (prefers-reduced-motion: reduce){ details.more>summary::before{transition:none} }
+</style>
+</head>
+<body><main>
+<button id="theme-toggle" type="button" aria-label="Toggle light/dark theme">◐ <span id="theme-label">auto</span></button>
+<h1>{{TITLE}}</h1>
+<p class="sub">{{SUBTITLE}}</p>
+{{BODY}}
+<script>
+// Theme toggle: auto → light → dark → auto. Persists per-viewer (try/catch — storage may be blocked).
+(function(){
+  const btn=document.getElementById("theme-toggle"), lab=document.getElementById("theme-label");
+  const order=["auto","light","dark"]; let cur="auto";
+  try{ cur=localStorage.getItem("report-theme")||"auto" }catch(e){}
+  function apply(v){
+    cur=v; lab.textContent=v;
+    if(v==="auto"){ document.documentElement.removeAttribute("data-theme"); }
+    else{ document.documentElement.setAttribute("data-theme",v); }
+    try{ localStorage.setItem("report-theme",v) }catch(e){}
+  }
+  apply(cur);
+  btn.addEventListener("click",()=>apply(order[(order.indexOf(cur)+1)%order.length]));
+})();
+// Mini markdown renderer (headers, bold/italic, code, lists, quotes, links, hr, GFM tables).
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function inline(s){
+  return s
+    .replace(/`([^`]+)`/g,(m,c)=>"<code>"+c+"</code>")
+    .replace(/\*\*([^*]+)\*\*/g,"<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g,"<em>$1</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2">$1</a>');
+}
+function md(src){
+  const lines=esc(src).split("\n"); let out=[],inCode=false,inList=false,inQuote=false,i=0;
+  const closeAll=()=>{if(inList){out.push("</ul>");inList=false}if(inQuote){out.push("</blockquote>");inQuote=false}};
+  while(i<lines.length){
+    const raw=lines[i];
+    if(raw.startsWith("```")){closeAll();out.push(inCode?"</pre>":"<pre>");inCode=!inCode;i++;continue}
+    if(inCode){out.push(raw);i++;continue}
+    if(/^\s*\|.*\|\s*$/.test(raw) && i+1<lines.length && /^\s*\|[\s\-:|]+\|\s*$/.test(lines[i+1])){
+      closeAll();
+      const cells=r=>r.trim().replace(/^\||\|$/g,"").split("|").map(c=>inline(c.trim()));
+      out.push('<div class="overflow"><table><tr>'+cells(raw).map(c=>"<th>"+c+"</th>").join("")+"</tr>");
+      i+=2;
+      while(i<lines.length && /^\s*\|.*\|\s*$/.test(lines[i])){
+        out.push("<tr>"+cells(lines[i]).map(c=>"<td>"+c+"</td>").join("")+"</tr>"); i++;
+      }
+      out.push("</table></div>"); continue;
+    }
+    const l=raw;
+    if(/^\s*$/.test(l)){closeAll();i++;continue}
+    if(/^---+\s*$/.test(l)){closeAll();out.push("<hr>");i++;continue}
+    let m;
+    if(m=l.match(/^(#{1,4})\s+(.*)/)){closeAll();const h=m[1].length;out.push(`<h${h}>`+inline(m[2])+`</h${h}>`);i++;continue}
+    if(m=l.match(/^\s*&gt;\s?(.*)/)){if(!inQuote){closeAll();out.push("<blockquote>");inQuote=true}out.push("<p>"+inline(m[1])+"</p>");i++;continue}
+    if(m=l.match(/^\s*[-*]\s+(.*)/)){if(inQuote){out.push("</blockquote>");inQuote=false}if(!inList){out.push("<ul>");inList=true}out.push("<li>"+inline(m[1])+"</li>");i++;continue}
+    if(m=l.match(/^\s*(\d+)\.\s+(.*)/)){if(inQuote){out.push("</blockquote>");inQuote=false}if(!inList){out.push("<ul>");inList=true}out.push("<li><b>"+m[1]+".</b> "+inline(m[2])+"</li>");i++;continue}
+    closeAll();out.push("<p>"+inline(l)+"</p>");i++;
+  }
+  closeAll(); if(inCode)out.push("</pre>");
+  return out.join("\n");
+}
+document.querySelectorAll('script[type="text/markdown"]').forEach(s=>{
+  const d=document.createElement("div"); d.innerHTML=md(s.textContent.trim());
+  s.parentNode.replaceChild(d,s);
+});
+</script>
+</main></body>
+</html>
