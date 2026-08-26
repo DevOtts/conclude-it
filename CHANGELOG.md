@@ -3,6 +3,29 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## 1.0.1 — 2026-08-26
+
+Positioning + cross-agent portability release. No behavior change on Claude Code.
+
+- **New headline.** The README now leads with the pain, not the family slogan:
+  *"Done" is a claim. Concluded is proven.* — stop closing sessions on hope.
+- **Full-ecosystem install docs**, matching the build-it convention: per-agent
+  sections (Claude Code · Codex · OpenClaw · Cursor · VS Code + Copilot ·
+  Copilot CLI · Kiro · others), the two universal installers
+  (`npx skills add DevOtts/conclude-it -a <agent>`, `gh skill install
+  DevOtts/conclude-it`), and a **Platform compatibility** table covering the
+  same 18-row agent matrix (Claude Code native; 70+ agents via the Agent
+  Skills standard).
+- **Portability contract in the root `SKILL.md`** (the file every non-Claude
+  agent installs): an explicit graceful-degradation section — `/iterate` and
+  `/full-qa` phases run inline when absent; the HTML report machinery degrades
+  to a `CONCLUDE_REPORT.md` with the identical honest structure; a missing
+  debrief skill degrades to inline capture *including* the
+  promotion/supersession sweep; and whatever ran inline is **named in the
+  verdict** rather than silently absorbed. The root SKILL.md is confirmed
+  self-contained: the ship pipeline is carried inline, so single-file installs
+  run the full ritual.
+
 ## 1.0.0 — 2026-08-26
 
 Initial public release — but not a first draft. conclude-it 1.0.0 is the public

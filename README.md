@@ -3,12 +3,13 @@
 <h1>/conclude-it</h1>
 
 <h3>
-  <strong>plan-it plans it, build-it builds it, review-it reviews it — conclude-it concludes it.</strong>
+  <strong>"Done" is a claim. Concluded is proven.</strong>
 </h3>
 
 <p>
-  One command to close every session.<br>
-  <strong>If it shipped, it gets proven in prod first. If it didn't, it gets closed clean.</strong>
+  Your agent says the feature is done. Is it live? Verified in prod? Documented?<br>
+  Is anything still running? Did it clean up after itself?<br>
+  <strong>Stop closing sessions on hope — one command proves it, files it, cleans it, and tells you honestly if it's safe to walk away.</strong>
 </p>
 
 <a href="#how-it-works">
@@ -19,6 +20,7 @@
   <a href="#installation"><img src="https://img.shields.io/badge/Quick%20Start-Install-blue?style=for-the-badge" alt="Quick Start"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://claude.ai/code"><img src="https://img.shields.io/badge/Works%20with-Claude%20Code-orange?style=for-the-badge&logo=anthropic" alt="Works with Claude Code"></a>
+  <a href="#platform-compatibility"><img src="https://img.shields.io/badge/Portable-70%2B%20agents-2ea44f?style=for-the-badge" alt="Portable: 70+ agents"></a>
   <a href="https://github.com/DevOtts"><img src="https://img.shields.io/badge/author-DevOtts-181717?style=for-the-badge&logo=github" alt="Author: DevOtts"></a>
 </p>
 
@@ -33,11 +35,13 @@
   &nbsp;·&nbsp;
   <a href="#whats-bundled">What's bundled</a>
   &nbsp;·&nbsp;
+  <a href="#platform-compatibility">Platform compatibility</a>
+  &nbsp;·&nbsp;
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 > [!NOTE]
-> **The lifecycle family** — [`plan-it`](https://github.com/DevOtts/plan-it) plans → [`build-it`](https://github.com/DevOtts/build-it) builds → [`review-it`](https://github.com/DevOtts/review-it) verifies → **conclude-it** concludes. This is the last stage: the work is built and reviewed; conclude-it ships it, proves it in prod, files the knowledge, cleans the debris, and tells you — honestly — whether it's safe to walk away. ([`prompt-it`](https://github.com/DevOtts/prompt-it) compiles the prompts that start it all.)
+> **The lifecycle family** — plan-it plans it, build-it builds it, review-it reviews it, **conclude-it concludes it**: [`plan-it`](https://github.com/DevOtts/plan-it) plans → [`build-it`](https://github.com/DevOtts/build-it) builds → [`review-it`](https://github.com/DevOtts/review-it) verifies → **conclude-it** concludes. This is the last stage: the work is built and reviewed; conclude-it ships it, proves it in prod, files the knowledge, cleans the debris, and closes the session. ([`prompt-it`](https://github.com/DevOtts/prompt-it) compiles the prompts that start it all.)
 
 <br>
 </div>
@@ -85,9 +89,21 @@ it named.
 
 ## Installation
 
-### Claude Code · *native, full experience*
+conclude-it ships as both a **Claude Code plugin** and a standard repo-root
+**`SKILL.md`**, so it installs across the whole agent ecosystem. Pick your tool
+below.
 
-```
+> [!TIP]
+> **Two universal installers** understand the `SKILL.md` standard and drop conclude-it into the right directory for 70+ tools — use these if your agent isn't listed:
+> ```sh
+> npx skills add DevOtts/conclude-it -a <agent>   # e.g. -a codex, -a cursor, -a github-copilot ; add -g for global
+> gh skill install DevOtts/conclude-it            # GitHub CLI (project or user scope)
+> ```
+> Peek first with `npx skills add DevOtts/conclude-it --list`.
+
+### Claude Code  ·  *native, full experience*
+
+```sh
 # 1. Register the marketplace
 /plugin marketplace add DevOtts/conclude-it
 
@@ -95,20 +111,93 @@ it named.
 /plugin install conclude-it@devotts
 ```
 
-### Any SKILL.md-compatible agent · *Cursor, Codex CLI, Copilot, OpenCode, Windsurf, …*
+The marketplace name `devotts` comes from the `name` field in
+[marketplace.json](.claude-plugin/marketplace.json). This is the **only** target
+that gets the full bundle — the conductor with its progressive-disclosure ship
+pipeline, the deterministic `build-report.py` + HTML template machinery, *and*
+the bundled generic `session-debrief`, with slash-command invocation and
+auto-activation. (Skills-CLI alternative: `npx skills add DevOtts/conclude-it -a claude-code`.)
 
-```
-npx skills add DevOtts/conclude-it -a <agent>    # peek first: npx skills add DevOtts/conclude-it --list
+### Codex  ·  *OpenAI Codex CLI*
+
+```sh
+npx skills add DevOtts/conclude-it -a codex
+# or:  gh skill install DevOtts/conclude-it
 ```
 
-### Use it
+Installs to the shared `.agents/skills/conclude-it/` that Codex reads. Codex
+doesn't carry the bundled machinery, so conclude-it runs the debrief **inline**
+and writes the closeout report as markdown (graceful degradation) — you still
+get the triage, the fail-closed gates, the ledger card, the sweeps, and the
+honest verdict.
+
+### OpenClaw
+
+```sh
+npx skills add DevOtts/conclude-it -a openclaw
+```
+
+Lands in `.openclaw/skills/conclude-it/SKILL.md`.
+
+### Cursor
+
+```sh
+npx skills add DevOtts/conclude-it -a cursor      # add -g for a global install
+```
+
+Installs into Cursor's `.agents/skills/` and is auto-discovered.
+
+### VS Code + GitHub Copilot
+
+```sh
+npx skills add DevOtts/conclude-it -a github-copilot
+# or:  gh skill install DevOtts/conclude-it
+```
+
+Copilot auto-discovers skills under `.agents/skills/`.
+
+### Copilot CLI
+
+```sh
+gh skill install DevOtts/conclude-it
+# or:  npx skills add DevOtts/conclude-it -a github-copilot
+```
+
+### Kiro CLI / IDE
+
+```sh
+gh skill install DevOtts/conclude-it
+```
+
+If your Kiro build doesn't yet read the shared skills path, drop the skill in manually:
+
+```sh
+git clone https://github.com/DevOtts/conclude-it /tmp/conclude-it
+mkdir -p "<kiro-skills-dir>/conclude-it" && cp /tmp/conclude-it/SKILL.md "<kiro-skills-dir>/conclude-it/"
+```
+
+### Others  ·  *OpenCode · Cline · Windsurf · Zed · Gemini CLI · Antigravity · Amp · Warp …*
+
+```sh
+npx skills add DevOtts/conclude-it -a <agent>
+```
+
+Run `npx skills add DevOtts/conclude-it --list`, then target your agent — the
+CLI knows the correct path for each. **Manual fallback for any tool:** clone the
+repo and copy the root [`SKILL.md`](SKILL.md) into your agent's
+skills/instructions directory.
+
+> [!NOTE]
+> On every target **except Claude Code**, conclude-it installs as a single self-contained skill (the root `SKILL.md` — it carries the full flow, ship pipeline included). The HTML report machinery, the bundled `session-debrief`, and delegated helpers like `/iterate` and `/full-qa` are Claude Code plugin pieces; elsewhere conclude-it runs those phases inline, writes the closeout report as markdown, and **names the absence in its verdict** instead of pretending. The thing that ports everywhere is the **ritual** — the gates, the sweeps, and the honesty.
+
+### Use
 
 ```
 /conclude-it        # at the end of any session — the triage picks the leg
 ```
 
 Also answers to plain language: *"close this session"*, *"wrap up and exit"*,
-*"ship it and close"*, *"is it safe to exit?"*.
+*"ship it and close"*, *"I'm done for now"*, *"is it safe to exit?"*.
 
 ## How it works
 
@@ -121,7 +210,7 @@ Also answers to plain language: *"close this session"*, *"wrap up and exit"*,
               ┌─────────────────▼─┐     │
               │  SHIP PIPELINE    │     │
               │  S1 local gate 🔴🟢│     │   fail-closed: red never advances;
-              │  S2 merge+deploy  │     │   /iterate loops fixes until green;
+              │  S2 merge+deploy  │     │   fix loops until green;
               │  S3 prod gate 🔴🟢 │     │   no prod target → "deployed-but-
               │  S4 archive docs  │     │   unverified", said loudly
               │  S5 backlog       │     │
@@ -164,6 +253,9 @@ referenced markdown reports embedded as collapsed toggles — and on every card 
 restatement of what the agent ran. RED and UNVERIFIED items get their own badges
 with the blocker named. A report that only shows the green half is a fake.
 
+(Outside Claude Code, where the machinery isn't installed, the same report is
+written as markdown with the same honest structure.)
+
 ## What's bundled
 
 | Piece | What it is |
@@ -191,9 +283,46 @@ with [`build-it`](https://github.com/DevOtts/build-it)'s `/iterate` and
 - **Local-only reporting** — the closeout report is a file on disk; nothing is
   published to hosted surfaces uninvited.
 
+## Platform compatibility
+
+conclude-it is a `SKILL.md` at its core, so it runs anywhere the open
+[Agent Skills](https://github.com/vercel-labs/skills) standard does. **Claude
+Code** gets the full plugin (conductor + report machinery + bundled
+`session-debrief`); every other tool gets the portable **ritual** — triage,
+fail-closed gates, ledger card, sweeps, and the honest verdict — with the
+delegated pieces running inline.
+
+Every `skills add -a <agent>` row below is shorthand for
+`npx skills add DevOtts/conclude-it -a <agent>` (append `-g` for a global
+install). Don't see your tool? Run `npx skills add DevOtts/conclude-it --list` —
+the CLI supports 70+ agents.
+
+| Platform | Status | Install Method |
+|----------|--------|----------------|
+| Claude Code | ✅ Native | Plugin marketplace |
+| Cursor | ✅ Supported | Auto-discovery |
+| VS Code + GitHub Copilot | ✅ Supported | Auto-discovery |
+| Copilot CLI | ✅ Supported | `gh skill install` |
+| Codex | ✅ Supported | `skills add -a codex` |
+| OpenCode | ✅ Supported | `skills add -a opencode` |
+| OpenClaw | ✅ Supported | `skills add -a openclaw` |
+| Antigravity | ✅ Supported | `skills add -a antigravity` |
+| Gemini CLI | ✅ Supported | `skills add -a gemini-cli` |
+| Pi Agent | ✅ Supported | `skills add -a pi` |
+| Vibe CLI | ✅ Supported | `skills add -a mistral-vibe` |
+| Hermes | ✅ Supported | `skills add -a hermes-agent` |
+| Cline | ✅ Supported | `skills add -a cline` |
+| KIMI CLI | ✅ Supported | `skills add -a kimi-code-cli` |
+| Trae | ✅ Supported | `skills add -a trae` |
+| Nanobot | ✅ Supported | Manual — copy `SKILL.md` |
+| Kiro CLI / IDE | ✅ Supported | `skills add -a kiro-cli` |
+| Windsurf · Zed · Amp · Warp · Roo · Goose · Junie · Qwen · …50+ more | ✅ Supported | `npx skills add DevOtts/conclude-it --list` |
+
+**Legend** — **✅ Native:** the complete plugin (conductor + progressive-disclosure ship pipeline + HTML report machinery + bundled `session-debrief`, slash-command + auto-activation). **✅ Supported:** the self-contained root `SKILL.md` installs and runs the full ritual; Claude-specific pieces (HTML machinery, bundled debrief, delegated `/iterate`//`/full-qa`) execute inline, and the verdict names what ran inline.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE) and [plugin.json](plugins/conclude-it/.claude-plugin/plugin.json). Use it, fork it, close with it.
 
 ---
 <div align="center">

@@ -15,7 +15,7 @@ description: >-
   "close this session", "wrap up and exit", "I'm done for now", "end session",
   "clean up before I leave", "ship it and close", or "is it safe to exit". It prepares
   the quit; the user types it.
-version: 1.0.0
+version: 1.0.1
 license: MIT
 author: DevOtts
 author_url: https://github.com/DevOtts
@@ -49,8 +49,9 @@ skill sequences the close so none of that survives it.
 
 ## The ship pipeline (ship-shaped sessions only)
 
-Fail-closed, in order; full detail in
-`plugins/conclude-it/skills/conclude-it/references/ship-pipeline.md`:
+Fail-closed, in order. (The Claude Code plugin carries an expanded version in
+`references/ship-pipeline.md`, loaded only when triage says ship-shaped; **this
+file is self-contained** — on any other agent, run the steps below as written.)
 
 1. **S0 Scope + rename** — name the epic in one line; rename the session
    `done-<name>`.
@@ -112,9 +113,35 @@ Fail-closed, in order; full detail in
   locations; delete what a durable doc cites.
 - Quit the process itself — it prepares the exit, the user takes it.
 
+## Portability — graceful degradation outside Claude Code
+
+This file is the complete, self-contained ritual: it runs on any
+SKILL.md-compatible agent (Cursor, Codex CLI, Copilot, OpenCode, Windsurf,
+Gemini CLI, and 70+ others via the Agent Skills standard). Some helpers it
+names are Claude Code plugin pieces; when one is absent, degrade **inline and
+say so** — never skip the step and never pretend the helper ran:
+
+- **`/iterate` / `/full-qa` absent** → run the diagnose→fix→re-test loop and
+  the e2e/smoke verification yourself, inline. The gates and their fail-closed
+  rules are unchanged.
+- **Report machinery absent** (`build-report.py` + template ship only in the
+  plugin) → write `CONCLUDE_REPORT.md` (markdown) with the identical structure:
+  gates scoreboard first, per-item sections with status + "How to test" steps,
+  RED/UNVERIFIED first-class.
+- **Bundled `session-debrief` absent and the project has no debrief skill** →
+  capture inline: dated session-log entry in the project's docs + the
+  promotion/supersession sweep from the debrief spec (update durable pages, bump
+  their verified-date, deprecate what the change replaced).
+- **No subagent/rename primitives on this harness** → do the work in the main
+  loop and emit the rename line for the user; the sweeps and verdict still run.
+
+Whatever ran inline gets named in the verdict ("debrief ran inline — no debrief
+skill installed"), so the close is honest about its own machinery.
+
 ## Install
 
-**Claude Code (plugin, recommended):**
+**Claude Code (plugin, recommended — full bundle: ship-pipeline reference, HTML
+report machinery, bundled session-debrief):**
 
 ```
 /plugin marketplace add DevOtts/conclude-it
@@ -125,6 +152,7 @@ Fail-closed, in order; full detail in
 
 ```
 npx skills add DevOtts/conclude-it -a <agent>    # peek first: npx skills add DevOtts/conclude-it --list
+gh skill install DevOtts/conclude-it             # GitHub CLI alternative
 ```
 
 **Getting started:** at the end of any working session —
