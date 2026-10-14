@@ -3,6 +3,18 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## 1.2.0 — 2026-10-14
+
+New: **do-it finish-line gate** (companion change for the do-it program).
+
+When `.do-it/finish-line.json` exists (root from `DO_IT_HOME`, else the main
+checkout's `.do-it`), conclude-it refuses to close (G-13) while a row is
+unaccounted (OPEN), a worker is live, or a wake-up is pending, and names each
+one. DONE, PARKED and BLOCKED rows with evidence or a reason count as accounted.
+Sessions without a finish line are unaffected. Under a do-it run the close ends
+with an atomic `it-result/1`. Minor bump: additive gate, no behaviour change
+outside do-it runs.
+
 ## 1.1.0 — 2026-08-26
 
 New: **the first-run setup interview** — per-repo memory, saved inside the repo.

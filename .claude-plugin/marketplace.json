@@ -10,7 +10,7 @@
     {
       "name": "conclude-it",
       "source": "./plugins/conclude-it",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "description": "The single front door for every session close — the ship stage of the *-it lifecycle. Step-0 triage detects ship-shaped sessions and runs the ship pipeline first (local test gate → merge+deploy → prod gate → archive → backlog → PM), then the session-close core every session gets: debrief with supersession sweep, ledger card, mid-flight verification, subagent reaping, footprint sweep incl. secrets at rest, local CONCLUDE_REPORT.html, honest safe-to-exit verdict.",
       "author": {
         "name": "DevOtts",
