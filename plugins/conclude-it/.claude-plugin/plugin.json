@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "conclude-it",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "The single front door for every Claude Code session close — and the ship stage of the *-it lifecycle (plan-it plans it, build-it builds it, review-it reviews it, conclude-it concludes it). A mechanical Step-0 triage detects ship-shaped sessions and runs the ship pipeline first (local test gate → merge+deploy → prod gate → archive plan docs → backlog → PM board), then the session-close core every session gets: knowledge debrief with supersession sweep, session-history ledger card, mid-flight + controlled-sessions verification, idle-subagent reaping, own-footprint sweep including secrets at rest, a local CONCLUDE_REPORT.html double-check report, and an honest safe-to-exit verdict. Fail-closed gates, no fake greens: a report that only shows the green half is a fake. Bundles a generic session-debrief skill.",
   "author": {
     "name": "DevOtts",

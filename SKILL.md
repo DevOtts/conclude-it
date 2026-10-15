@@ -17,7 +17,7 @@ description: >-
   "/conclude-it", "conclude", "exit", "close this session", "wrap up and exit",
   "I'm done for now", "end session", "clean up before I leave", "ship it and close",
   or "is it safe to exit". It prepares the quit; the user types it.
-version: 1.1.0
+version: 2.0.0
 license: MIT
 author: DevOtts
 author_url: https://github.com/DevOtts
@@ -138,6 +138,10 @@ file is self-contained** — on any other agent, run the steps below as written.
    server-side jobs, and sessions THIS session orchestrated (peers, headless
    spawns): each must be terminal or handed to the user by name. Never exit an
    orchestrator with a worker running unowned.
+   **Finish-line gate:** when `.do-it/finish-line.json` exists (root resolved from
+   `DO_IT_HOME`, else the main checkout's `.do-it`), refuse to close (G-13) while a
+   row is unaccounted (state OPEN, or DONE/PARKED/BLOCKED with no evidence or
+   reason), a worker is live, or a wake-up is pending; name each one. Read-only.
 5. **Reap** — stop finished subagents once their output is captured in files;
    kill lingering headless processes by exact recorded PID only (never a
    pattern-matched kill).

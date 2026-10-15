@@ -241,6 +241,27 @@ Check, and report what you find:
 If anything load-bearing is mid-flight, STOP here, report it, and let the user
 decide (wait, merge, or accept). Do not proceed to reaping.
 
+## Step 3.5 — Finish-line gate (do-it runs; skip when there is no finish line)
+
+Resolve the do-it root: `DO_IT_HOME` if set; else in a linked git worktree
+`{main checkout}/.do-it` (main checkout = parent of `git rev-parse --git-common-dir`);
+else `{repo}/.do-it`. If `<root>/finish-line.json` does not exist, skip this step
+(plain sessions have no finish line) and say so. If it exists, **refuse to close**
+(G-13) while any of these holds, naming each offender in the verdict:
+
+- a finish-line row is **unaccounted** (`state: OPEN`) — name the row `id`;
+- a worker this session started is still live — name the worker;
+- a wake-up is pending — name it.
+
+Rows in `DONE`, `PARKED` or `BLOCKED` count as accounted, provided `evidence`
+(DONE) or `reason` (PARKED, BLOCKED) is filled; a bare state with neither is
+unaccounted. Read-only: never edit `finish-line.json` to make the gate pass.
+Under a do-it run, the last act of the close is an atomic `it-result/1` for stage
+`conclude-it` (write a temp file in the same directory, then rename; never write
+`state.json`): `status` `ok` when closed, `blocked` when refused, with `verdicts`
+using only VERIFIED, IMPLEMENTED-NOT-VERIFIED or BLOCKED. Legacy `.taskstate/`
+paths are read as a resume fallback only, never created by this step.
+
 ## Step 4 — Reap idle subagents and the control plane
 
 The anti-zombie step; the durable default:
