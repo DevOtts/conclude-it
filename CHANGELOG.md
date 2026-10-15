@@ -3,6 +3,14 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## 2.0.0 — 2026-10-14
+
+Major release: conclude-it moves to 2.0.0 together with the rest of the *-it
+lifecycle family (prompt-it 1.0.0, plan-it 5.0.0, build-it 4.0.0, review-it 2.0.0,
+parallel-lifecycle 1.0.0). No behaviour change beyond 1.2.0; the do-it
+finish-line gate is carried unchanged. Version bump in `plugin.json`,
+`marketplace.json` and `SKILL.md` frontmatter.
+
 ## 1.2.0 — 2026-10-14
 
 New: **do-it finish-line gate** (companion change for the do-it program).
