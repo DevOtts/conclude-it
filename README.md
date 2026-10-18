@@ -108,7 +108,7 @@ below.
 /plugin marketplace add DevOtts/conclude-it
 
 # 2. Install the plugin (plugin-name@marketplace-name)
-/plugin install conclude-it@devotts
+/plugin install conclude-it@conclude-it
 ```
 
 The marketplace name `devotts` comes from the `name` field in
