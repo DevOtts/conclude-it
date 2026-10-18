@@ -201,7 +201,7 @@ report machinery, bundled session-debrief):**
 
 ```
 /plugin marketplace add DevOtts/conclude-it
-/plugin install conclude-it@devotts
+/plugin install conclude-it@conclude-it
 ```
 
 **Any SKILL.md-compatible agent (Cursor, Codex CLI, Copilot, OpenCode, Windsurf, …):**
