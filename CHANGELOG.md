@@ -3,6 +3,16 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## 2.1.1 — 2026-10-18
+
+Patch release, from the first real run of the do-it harness.
+
+### Changed
+- The marketplace is named `conclude-it`, and the install line is `conclude-it@conclude-it`. plan-it,
+  review-it, conclude-it and do-it all called theirs `devotts`, so adding two of them clashed;
+  `devotts` is now only the do-it hub. Someone who added this repo as `devotts` should remove that
+  entry and add `conclude-it`. Nothing else changes.
+
 ## 2.1.0 — 2026-10-18
 
 Minor release. conclude-it works with sessions registered by init-it and closes an implementation

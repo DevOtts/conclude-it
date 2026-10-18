@@ -17,7 +17,7 @@ description: >-
   "/conclude-it", "conclude", "exit", "close this session", "wrap up and exit",
   "I'm done for now", "end session", "clean up before I leave", "ship it and close",
   or "is it safe to exit". It prepares the quit; the user types it.
-version: 2.1.0
+version: 2.1.1
 license: MIT
 author: DevOtts
 author_url: https://github.com/DevOtts
