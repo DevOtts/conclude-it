@@ -218,6 +218,44 @@ always be answerable).
 
 The card is a pointer + outcome summary, NOT a second debrief.
 
+**Open cards from `/init-it` (upgrade in place, never a second card).** A session that ran
+`/init-it` already has a card with `status: open` and `implementation: [..]`, plus an INDEX
+row (8-column table with an `Impl` column). Do not hand-write steps 2–3 then: author only
+the card body (Objective / Key results / Files touched / Pointers / Next) into a temp file
+and let the helper write the card and the row:
+
+```
+L=${CLAUDE_PLUGIN_ROOT}/skills/conclude-it/scripts/ledger-card.mjs
+node "$L" upgrade --repo <repo root> --status concluded|shipped --body-file <body.md> \
+  --tags <a,b> --summary "<one line>" [--implementation <names the session touched>] \
+  [--alias <alias> --session <session-name>]     # used only when no open card exists
+```
+
+- Finds the open card by `session_id` (`$CLAUDE_CODE_SESSION_ID`). Found: rewrites the
+  same file (status → `concluded`/`shipped`, `implementation` kept and extended), replaces
+  the same INDEX row, and sets `ended_at` for this session in each implementation's
+  `status.json` through build-it's `status-write session end --by conclude-it`.
+- Not found (the session never ran `/init-it`): writes the card exactly as before; it adds
+  `implementation:` only when `--implementation`, `.taskstate/implementation` or the branch
+  name names a folder under `docs/implementations/`, else leaves it out. A legacy INDEX with
+  no `Impl` column gets the legacy 7-cell row, as today.
+- A card without `implementation:` means "unknown", never an error. `status: open` means
+  "not concluded". Never edit `status.json` by hand; a non-zero exit means nothing changed.
+
+**Closing an implementation (only when the session finished it).** Run before the upgrade
+above, so the card can link the moved path:
+
+```
+node "$L" close --repo <repo root> --impl <name> [--owner-note "<why unverified tasks stay>"]
+```
+
+It refuses (exit 1, nothing written) unless every task on the board is `verified`, or an
+owner note is given; an empty board counts as nothing verified. Then it runs
+`status-write session end --by conclude-it` for every open session in `sessions[]`, and
+`status-write close --by conclude-it --move --impl <name>` (with `--owner-note` when given),
+which freezes the board and moves the folder to `docs/implementations/0-done/<name>`.
+Never pass an owner note the user did not give.
+
 ## Step 3 — Verify nothing is mid-flight (read-only)
 
 Check, and report what you find:
