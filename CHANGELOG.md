@@ -3,6 +3,20 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## 2.1.0 — 2026-10-18
+
+Minor release. conclude-it works with sessions registered by init-it and closes an implementation
+through build-it's status writer.
+
+### Added
+- `scripts/ledger-card.mjs` (Step 2.5): `upgrade` rewrites a card that `/init-it` opened, in the same
+  file and the same INDEX row, to `concluded` or `shipped`, keeps `implementation:` and extends it
+  with what the session touched, and sets the session's `ended_at` in `status.json`. With no open
+  card it writes the card as before. `close` closes an implementation through `status-write`: it ends
+  the open sessions, refuses to move the folder to `0-done` while any task is not `verified` unless
+  an owner note is given, and a board with no tasks also needs the owner note. It never edits
+  `status.json` by hand.
+
 ## 2.0.0 — 2026-10-14
 
 Major release: conclude-it moves to 2.0.0 together with the rest of the *-it
