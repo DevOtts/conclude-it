@@ -53,7 +53,7 @@ prod URL reachable.
 | S1 | REAL test scripts discovered and run (placeholders named + skipped). RED → `/iterate` loop; still RED → STOP, no deploy. |
 | S2 | Merge hygiene per repo; project deploy skill invoked by name; destructive sub-actions still gated on explicit yes. |
 | S3 | Smoke/e2e against prod. RED → fix → S2 → S3 again. No target → "deployed-but-unverified" recorded, loudly. |
-| S4–S6 | Docs `git mv`'d to `0-done/` sibling with links fixed; backlog notes each name the `done-*` session; PM rows flipped only if a PM surface exists. |
+| S4–S6 | Package archived to its `0-done/` sibling only through `archive-package.mjs` (guarded close, or a CLOSEOUT checked by doc-it), links fixed; backlog notes each name the `done-*` session; PM rows flipped only if a PM surface exists. |
 | 1–5 core | Same as Scenario A — debrief must include the **supersession line** ("contradictions swept: N pages" or a measured zero naming the greps). |
 | 5.5 report | Manifest authored by a small-model subagent; `build-report.py` exit 0 (exit 2 = broken embeds = fix + rebuild); report opened locally; RED/UNVERIFIED items carry their own badges. |
 | 6 verdict | Full report format: gates table with evidence, shipped, documented (incl. contradictions swept), open/unverified, ✅/⚠️. |

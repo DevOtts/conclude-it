@@ -1,0 +1,8 @@
+{
+  "name": "conclude-it-tests",
+  "private": true,
+  "description": "Test runner only (the plugin has no dependencies). Needs DOIT_STATUS_WRITE (build-it status-write.mjs) or an installed build-it, and DOC_IT_CLI (doc-it.mjs) or an installed doc-it; without doc-it the doc-it cases skip as IMPLEMENTED-NOT-VERIFIED.",
+  "scripts": {
+    "test": "node --test 'tests/**/*.test.mjs' 'plugins/**/*.test.mjs'"
+  }
+}

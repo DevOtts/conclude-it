@@ -3,6 +3,28 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- S4 archive has one way into `0-done/`: `scripts/archive-package.mjs`. A package with `status.json`
+  takes the guarded close (`ledger-card close` → `status-write close --move`); unverified tasks
+  without an owner note are REJECTED and the tasks are named. A package without `status.json` is
+  DENIED until a CLOSEOUT exists; S4 writes it from doc-it's template (`doc-it template closeout`,
+  no local copy), one row per piece, and lints it with `doc-it check closeout` before it lands.
+  The bare `git mv` instruction is gone.
+- `ledger-card close` closes a package already in `0-done/` in place (no `--move`), accepts
+  `--dir`, and reports PARTIAL_FAILED when a close dies between the freeze and the move; a re-run
+  completes the move.
+
+### Added
+- Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
+  never fixes or writes. Without doc-it: `[skip] doc-it not installed: check archive`, exit 0.
+- `scripts/docit-locate.mjs`: finds doc-it via `DOC_IT_CLI`, else the newest installed plugin copy.
+- Step 2 expiry check: `scripts/debrief-doc-check.mjs` runs `doc-it check expiry` on the pages the
+  session touched and gives the verdict lines; it never rewrites a page. Fact-kind homes (DS-1) are
+  reported as "not yet checked" (doc-it has no lookup yet). Eval `evals/doc-it-expiry.yaml`.
+- `package.json` with `npm test` (quoted globs) and tests under `tests/`.
+
 ## 2.1.1 — 2026-10-18
 
 Patch release, from the first real run of the do-it harness.

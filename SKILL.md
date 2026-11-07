@@ -116,8 +116,10 @@ file is self-contained** — on any other agent, run the steps below as written.
    still need an explicit yes.
 4. **S3 Prod gate** — smoke/e2e against prod. RED → fix, re-deploy, re-verify.
    No reachable prod target → close as "deployed-but-unverified", loudly.
-5. **S4 Archive** — `git mv` the epic's plan docs to their home's `0-done/`
-   sibling; fix links.
+5. **S4 Archive** — never a bare `git mv`: run `scripts/archive-package.mjs`, which
+   takes the guarded close when the package has `status.json` (unverified tasks and
+   no owner note → REJECTED, nothing moved) and otherwise writes a CLOSEOUT from
+   doc-it's template first (no CLOSEOUT → DENIED); fix links.
 6. **S5 Backlog** — write deferred follow-ups where the next session will look,
    each note naming the originating session.
 7. **S6 PM board** — flip the epic's rows on the project's tracker, if one exists.

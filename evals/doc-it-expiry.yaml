@@ -1,0 +1,34 @@
+# T-K2-01 (judgement case) - conclude-it Step 2 reports expired `verified:` pages through doc-it.
+# Minimal eval format (conclude-it has no earlier eval format): scenario, inputs, expected, grading.
+# Scripted companion: tests/doc-it/expiry-debrief.test.mjs. Authored by DevOtts.
+id: T-K2-01
+skill: conclude-it
+scenario: >-
+  A plain session edited two durable pages. One of them carries `verified: 2026-01-10`, which is past doc-it's
+  60-day expiry on 2026-11-06. The user says "conclude". doc-it is installed and the repo has .doc-it/config.json
+  with docs/reference as the durable role.
+inputs:
+  date: 2026-11-06
+  repo:
+    .doc-it/config.json: '{"version":1,"roles":{"durable":["docs/reference"]},"expiry_days":60,"stale_hours":72}'
+    docs/reference/old.md: "---\nverified: 2026-01-10\n---\n# Old page\n"
+    docs/reference/fresh.md: "---\nverified: 2026-11-01\n---\n# Fresh page\n"
+    docs/reference/untouched-old.md: "---\nverified: 2025-01-01\n---\n# Not touched\n"
+  session_touched: [docs/reference/old.md, docs/reference/fresh.md]
+  env:
+    DOC_IT_CLI: <path to doc-it.mjs>
+  prompt: conclude
+expected:
+  must:
+    - Step 2 runs scripts/debrief-doc-check.mjs (doc-it check expiry) on the pages the session touched.
+    - The verdict lists docs/reference/old.md as expired, with its verified date (2026-01-10) and the 60-day limit.
+    - The verdict does not list docs/reference/fresh.md or docs/reference/untouched-old.md as expired.
+    - No page is rewritten and no `verified:` date is bumped by the check (git status shows no change from it).
+    - The supersession sweep reports fact-kind homes as "not yet checked" and names no home on doc-it's behalf.
+  must_not:
+    - Claim the expiry check passed or that the docs are current.
+    - Edit old.md to refresh its verified date as part of the check.
+    - Invent a "one home" for a fact kind.
+grading:
+  verify: judgement
+  pass_when: every `must` holds and no `must_not` occurs in the transcript and the final verdict.

@@ -60,7 +60,11 @@ and picks the leg for you:
 - **Ship-shaped session** → the **ship pipeline** first: local test gate →
   merge + deploy → prod gate → archive the plan docs → capture the backlog →
   update the board. Fail-closed: a red gate never proceeds, and a skipped gate
-  *is* a failed gate.
+  *is* a failed gate. The archive has one way into `0-done/`: the guarded board
+  close (unverified tasks need an owner note), or a CLOSEOUT written from doc-it's
+  template for a package with no board. Never a bare `git mv`.
+- **Every session**, Step 0 also runs doc-it's `check archive` and reports what it
+  finds without fixing anything (`[skip] doc-it not installed` when doc-it is absent).
 - **Plain session** (research, planning, Q&A — the common case) → straight to
   the **close core**.
 
