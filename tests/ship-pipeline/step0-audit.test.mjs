@@ -69,3 +69,45 @@ test('T-A1-05 Step 0 finds an installed doc-it under HOME/.claude/plugins/cache 
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /2 finding\(s\)/);
 });
+
+function noisyRepo(n) {
+  const root = mkTmp('a1-noisy-');
+  const done = path.join(root, 'docs', 'implementation', '0-done');
+  for (let i = 0; i < n; i++) { fs.mkdirSync(path.join(done, `legacy${String(i).padStart(3, '0')}`), { recursive: true }); fs.writeFileSync(path.join(done, `legacy${String(i).padStart(3, '0')}`, 'PLAN.md'), 'x'); }
+  for (let i = 0; i < 3; i++) { fs.mkdirSync(path.join(done, `open${i}`), { recursive: true }); fs.writeFileSync(path.join(done, `open${i}`, 'status.json'), JSON.stringify({ closed: false })); }
+  fs.mkdirSync(path.join(root, '.doc-it'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.doc-it', 'config.json'), JSON.stringify({ version: 1, roles: { program: ['docs/implementation'] } }));
+  return root;
+}
+
+test('T-A1-05 Step 0 on a noisy archive (200 legacy packages) stays within ~15 lines and lists done_unclosed in full', (t) => {
+  if (!DOC_IT) { t.skip('doc-it missing'); return; }
+  const root = noisyRepo(200);
+  const r = script('archive-audit.mjs', ['--repo', root], { env: { DOC_IT_CLI: DOC_IT } });
+  assert.equal(r.code, 0, r.err);
+  const lines = r.out.trim().split('\n');
+  assert.ok(lines.length <= 15, `${lines.length} lines:\n${r.out}`);
+  for (const i of [0, 1, 2]) assert.match(r.out, new RegExp(`0-done/open${i}\\b`));
+  assert.match(r.out, /done_without_closeout=200|\(200\)/);
+});
+
+test('T-A1-05 Step 0 with a doc-it that lacks --summary falls back: done_unclosed list plus counts, still within ~15 lines', () => {
+  const root = noisyRepo(200);
+  const fake = path.join(mkTmp('a1-old-'), 'doc-it.mjs');
+  // Fixture only: an "older doc-it" that ignores unknown flags and has no --summary in its help.
+  fs.writeFileSync(fake, `const a = process.argv.slice(2);
+if (a.includes('--help')) { console.log('doc-it check archive [--root <dir>] [--json]'); process.exit(0); }
+const u = ['docs/implementation/0-done/open0', 'docs/implementation/0-done/open1', 'docs/implementation/0-done/open2'];
+const w = Array.from({ length: 200 }, (_, i) => 'docs/implementation/0-done/legacy' + i);
+console.log(JSON.stringify({ done_unclosed: u, done_without_closeout: w, stale_active: [], unowned: [] }));
+process.exit(1);
+`);
+  const r = script('archive-audit.mjs', ['--repo', root], { env: { DOC_IT_CLI: fake } });
+  assert.equal(r.code, 0, r.err);
+  const lines = r.out.trim().split('\n');
+  assert.ok(lines.length <= 15, `${lines.length} lines`);
+  assert.match(r.out, /203 finding\(s\)/);
+  assert.match(r.out, /0-done\/open2/);
+  assert.match(r.out, /done_without_closeout=200/);
+  assert.doesNotMatch(r.out, /legacy17/);
+});

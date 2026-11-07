@@ -153,7 +153,9 @@ Decide from **mechanical signals**, not vibes. Check, in order:
 `node "${CLAUDE_PLUGIN_ROOT}/skills/conclude-it/scripts/archive-audit.mjs" --repo <repo root>`.
 It runs doc-it's `check archive` and lists what it finds (archived packages whose
 board is not closed, archived packages with no board and no CLOSEOUT, stale active
-boards, unowned paths). It never fixes and changes no file; carry the findings into
+boards, unowned paths) as a short summary (at most ~15 lines: the unclosed list in full,
+counts and a capped sample for the rest; legacy packages older than doc-it's `archive_since` are
+only counted). It never fixes and changes no file; carry the findings into
 the verdict as open items. Without doc-it it prints
 `[skip] doc-it not installed: check archive` and you continue — never report that
 check as passed.

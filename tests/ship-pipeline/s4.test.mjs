@@ -61,6 +61,8 @@ test('T-A1-04 S4 on a package without status.json: DENIED first, then CLOSEOUT (
     { piece: 'Exporter', disposition: 'dropped', detail: 'superseded by the vendor API' },
     { piece: 'Docs site', disposition: 'carried', detail: 'navigation left', backlog: 'docs/implementation/1-backlog/docs-site.md' },
   ];
+  fs.mkdirSync(path.join(r.root, 'docs/implementation/1-backlog'), { recursive: true });
+  fs.writeFileSync(path.join(r.root, 'docs/implementation/1-backlog/docs-site.md'), '# docs site\n');
   const rowsFile = path.join(r.root, 'rows.json'); fs.writeFileSync(rowsFile, JSON.stringify(rows));
   const ok = S4(['--repo', r.root, '--impl', 'study', '--closeout-rows', rowsFile, '--by', 'conclude-it', '--date', '2026-11-06'], docItEnv());
   assert.equal(ok.code, 0, ok.err);

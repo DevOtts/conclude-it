@@ -114,13 +114,13 @@ export function archive(flags, env = process.env) {
     const tmp = path.join(tmpDir, 'CLOSEOUT.md');
     try {
       fs.writeFileSync(tmp, text.endsWith('\n') ? text : `${text}\n`);
-      const c = docIt(cli, ['check', 'closeout', tmp], { env });
+      const c = docIt(cli, ['check', 'closeout', tmp, '--root', root], { env });
       if (c.code !== 0) throw new Outcome('REJECTED', `CLOSEOUT refused by doc-it check closeout; nothing written or moved:\n${(c.out + c.err).trim()}`);
       fs.copyFileSync(tmp, closeout);
       out.push(`wrote ${path.relative(root, closeout)} (${rows.length} piece row(s)): ${c.out.trim()}`);
     } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
   } else {
-    const c = docIt(cli, ['check', 'closeout', closeout], { env });
+    const c = docIt(cli, ['check', 'closeout', closeout, '--root', root], { env });
     if (c.code !== 0) throw new Outcome('REJECTED', `${path.relative(root, closeout)} fails doc-it check closeout; nothing moved:\n${(c.out + c.err).trim()}`);
     out.push(`checked ${path.relative(root, closeout)}: ${c.out.trim()}`);
   }
