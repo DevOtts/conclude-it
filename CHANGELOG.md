@@ -3,7 +3,17 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 2.2.0 — 2026-11-07
+
+Minor release, from do-it 1.1: guarded archive S4 (A1-02, A1-04), Step 0 doc-it audit (A1-03),
+close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), and the
+`[skip] doc-it not installed` rule (K2-03, D14).
+
+### Requires
+- build-it >= 4.2.0 for close in place (`status-write close` without `--move`) and the crash-safe
+  `close --move`.
+- doc-it >= 0.1.0 is optional; without it the doc-it steps print `[skip] doc-it not installed: ...`
+  and exit 0.
 
 ### Changed
 - S4 archive has one way into `0-done/`: `scripts/archive-package.mjs`. A package with `status.json`
