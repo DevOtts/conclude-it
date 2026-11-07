@@ -188,6 +188,15 @@ fixes land in durable storage BEFORE teardown:
   only added new pages while old pages still describe the OLD behaviour is
   incomplete — send it back for the sweep.
 - Record what the debrief touched (pages + `verified:` dates) — Steps 5.5/6 cite it.
+- **Expiry check on the touched pages (report only).** Run
+  `node "${CLAUDE_PLUGIN_ROOT}/skills/conclude-it/scripts/debrief-doc-check.mjs" --repo <repo root> --pages <touched pages, comma separated>`
+  (or `--since <the session's start commit>`). It runs doc-it's `check expiry` and keeps the pages this session
+  touched; copy its lines into the verdict. Expired pages are listed, never rewritten: the check does not bump a
+  `verified:` date (re-verify a page only if the debrief really re-checked it). For the supersession sweep, the one
+  home of each fact kind comes only from doc-it; doc-it 0.1.0 has no such lookup, so the helper reports
+  `fact-kind homes (DS-1): not yet checked` and you never invent a home. Without doc-it it prints
+  `[skip] doc-it not installed: check expiry` and `[skip] doc-it not installed: fact-kind homes (DS-1)`; carry
+  them into the verdict and never report the check as passed.
 
 Skip only if the session did nothing worth remembering (pure Q&A, trivial edits) —
 and say so explicitly rather than silently skipping.
@@ -414,7 +423,8 @@ Plain closes skip this step — the Step 6 verdict is enough.
 
 **Plain close:**
 
-- **Safe to exit** — one line on what landed (captured + reaped + swept),
+- **Safe to exit** — one line on what landed (captured + reaped + swept, plus the Step 2
+  doc-it expiry lines: expired pages or the `[skip]` line),
   confirmation nothing is mid-flight, the Step 4.5 line (what was cleaned, what
   was deliberately left and why, and — explicitly — that no credential it wrote
   is still at rest).
@@ -438,6 +448,7 @@ Session: done-<name>   |   Repos: <list>
 ## Documented
 - Archived to 0-done: <paths>  ·  Debrief promoted: <pages + verified: dates>
 - Contradictions swept: <N pages updated/deprecated> (supersession sweep)
+- Docs expiry (doc-it): <the debrief-doc-check lines: expired pages, or the [skip] line>
 - Backlog: <deferred notes + files> / none  ·  PM updated: <where> / n.a.
 - Ledger: <card + INDEX rows>  ·  Report: <CONCLUDE_REPORT.html path>
 

@@ -20,6 +20,9 @@ All notable changes to conclude-it are documented here. This project adheres to
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
   never fixes or writes. Without doc-it: `[skip] doc-it not installed: check archive`, exit 0.
 - `scripts/docit-locate.mjs`: finds doc-it via `DOC_IT_CLI`, else the newest installed plugin copy.
+- Step 2 expiry check: `scripts/debrief-doc-check.mjs` runs `doc-it check expiry` on the pages the
+  session touched and gives the verdict lines; it never rewrites a page. Fact-kind homes (DS-1) are
+  reported as "not yet checked" (doc-it has no lookup yet). Eval `evals/doc-it-expiry.yaml`.
 - `package.json` with `npm test` (quoted globs) and tests under `tests/`.
 
 ## 2.1.1 — 2026-10-18
