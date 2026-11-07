@@ -149,6 +149,15 @@ Decide from **mechanical signals**, not vibes. Check, in order:
   ship): ask ONE question — "conclude (ship to prod) or just close?" Never deploy
   on a guess.
 
+**Archive audit (every session, report only).** Also run
+`node "${CLAUDE_PLUGIN_ROOT}/skills/conclude-it/scripts/archive-audit.mjs" --repo <repo root>`.
+It runs doc-it's `check archive` and lists what it finds (archived packages whose
+board is not closed, archived packages with no board and no CLOSEOUT, stale active
+boards, unowned paths). It never fixes and changes no file; carry the findings into
+the verdict as open items. Without doc-it it prints
+`[skip] doc-it not installed: check archive` and you continue — never report that
+check as passed.
+
 ## Step 1 — Confirm intent + scope
 
 Restate in one line what you're about to do ("wrapping up: debrief → ledger card
@@ -243,18 +252,21 @@ node "$L" upgrade --repo <repo root> --status concluded|shipped --body-file <bod
   "not concluded". Never edit `status.json` by hand; a non-zero exit means nothing changed.
 
 **Closing an implementation (only when the session finished it).** Run before the upgrade
-above, so the card can link the moved path:
+above, so the card can link the moved path. In a ship session this is S4's
+`archive-package.mjs`, which calls this same close; outside S4:
 
 ```
-node "$L" close --repo <repo root> --impl <name> [--owner-note "<why unverified tasks stay>"]
+node "$L" close --repo <repo root> (--impl <name> | --dir <package dir>) [--owner-note "<why unverified tasks stay>"]
 ```
 
-It refuses (exit 1, nothing written) unless every task on the board is `verified`, or an
-owner note is given; an empty board counts as nothing verified. Then it runs
+It refuses (exit 1, nothing written, `REJECTED`) unless every task on the board is `verified`,
+or an owner note is given; an empty board counts as nothing verified. Then it runs
 `status-write session end --by conclude-it` for every open session in `sessions[]`, and
-`status-write close --by conclude-it --move --impl <name>` (with `--owner-note` when given),
-which freezes the board and moves the folder to `docs/implementations/0-done/<name>`.
-Never pass an owner note the user did not give.
+`status-write close --by conclude-it --move` (with `--owner-note` when given), which freezes
+the board and moves the folder to the `0-done/` sibling (`CLOSED_MOVED`). A package already in
+`0-done/` with `closed: false` is closed in place, without `--move` (`CLOSED_IN_PLACE`). A run
+killed between the freeze and the move reports `PARTIAL_FAILED`; re-running close completes the
+move. Never pass an owner note the user did not give.
 
 ## Step 3 — Verify nothing is mid-flight (read-only)
 

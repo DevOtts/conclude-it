@@ -8,7 +8,8 @@
 //   ledger-card upgrade --repo R --status concluded|shipped --body-file F [--session-id ID] [--alias A]
 //                       [--session NAME] [--project P] [--date YYYY-MM-DD] [--cwd C] [--tags a,b]
 //                       [--summary TEXT] [--implementation a,b]
-//   ledger-card close   --repo R --impl NAME [--owner-note TEXT]
+//   ledger-card close   --repo R (--impl NAME | --dir PKG_DIR) [--owner-note TEXT]
+//                       a package already in 0-done/ is closed in place; a frozen board not yet moved (PARTIAL_FAILED) is moved
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -318,37 +319,69 @@ export function upgrade(flags, env = process.env) {
   return { out, warn, ...result };
 }
 
-// ---------- close (all verified, or an owner note; then move to 0-done) ----------
+// ---------- close (all verified, or an owner note; then move to 0-done, or close in place when already there) ----------
+// Outcomes (CONTRACT 3.3): CLOSED_MOVED, CLOSED_IN_PLACE (package already in 0-done/), REJECTED (unverified, no note),
+// PARTIAL_FAILED (board frozen, folder not moved: re-run close to complete the move).
+// --dir <package dir> may replace --impl for a package outside docs/implementation(s)/.
+function locatePackage(root, flags) {
+  if (nonEmpty(flags.dir)) {
+    const dir = path.resolve(root, flags.dir);
+    return { dir, name: path.basename(dir), done: path.basename(path.dirname(dir)) === '0-done' };
+  }
+  const name = flags.impl;
+  if (!nonEmpty(name)) throw new Fail('--impl <name> (or --dir <package dir>) is required', 2);
+  const d = implDir(root, name);
+  if (!d) throw new Fail(`no status.json for implementation ${name}`, 2);
+  return { dir: d.dir, name, done: d.done };
+}
 export function close(flags, env = process.env) {
   const out = [];
   const root = path.resolve(flags.repo || process.cwd());
-  const name = flags.impl;
-  if (!nonEmpty(name)) throw new Fail('--impl <name> is required', 2);
-  const base = implsDirOf(root);
-  const dir = base && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) ? path.join(base, name) : null;
-  const file = dir && path.join(dir, 'status.json');
-  if (!file || !fs.existsSync(file)) throw new Fail(`no status.json for implementation ${name}`, 2);
-  let doc; try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { throw new Fail(`invalid JSON in ${file}: ${e.message}`, 1); }
+  const pkg = locatePackage(root, flags);
+  const file = path.join(pkg.dir, 'status.json');
+  if (!fs.existsSync(file)) throw new Fail(`no status.json for implementation ${pkg.name}`, 2);
+  const readDoc = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { throw new Fail(`invalid JSON in ${file}: ${e.message}`, 1); } };
+  const doc = readDoc();
   const note = nonEmpty(flags['owner-note']) ? flags['owner-note'] : null;
-  if (doc.closed === true) throw new Fail(`close refused: ${name} is already closed`, 1);
-  const tasks = (doc.waves || []).flatMap((w) => w.tasks || []);
+  const target = path.join(path.dirname(pkg.dir), '0-done', pkg.name);
+  const w = () => resolveStatusWrite(env);
+  if (doc.closed === true) {
+    if (pkg.done) throw new Fail(`close refused: ${pkg.name} is already closed`, 1);
+    // PARTIAL_FAILED from an earlier run: the board is frozen, only the move is left. status-write completes it
+    // without a second close entry.
+    if (fs.existsSync(target)) throw new Fail('close --move refused: 0-done target already exists', 1);
+    const r = writer(w(), ['close', '--by', 'conclude-it', '--move', '--file', file], root);
+    if (r.status !== 0) throw new Fail(`PARTIAL_FAILED: board closed, folder not moved; resume refused: ${(r.stderr || '').trim()}`, r.status === 3 ? 3 : 1);
+    out.push((r.stdout || '').trim() || 'closed');
+    out.push(`CLOSED_MOVED ${path.relative(root, target)}`);
+    return { out, moved: target, outcome: 'CLOSED_MOVED' };
+  }
+  const tasks = (doc.waves || []).flatMap((x) => x.tasks || []);
   const open = tasks.filter((t) => t.status !== 'verified');
   // Pre-check before ANY write, so a refused close leaves sessions and the board byte-identical.
-  if (!tasks.length && !note) throw new Fail(`close refused: ${name} has no tasks on its board, so nothing is verified; pass --owner-note to close it knowingly`, 1);
-  if (open.length && !note) throw new Fail(`close refused: ${open.length} task(s) not verified (${open.map((t) => t.id).join(', ')}); pass --owner-note to override`, 1);
-  if (fs.existsSync(path.join(base, '0-done', name))) throw new Fail('close --move refused: 0-done target already exists', 1);
-  const w = resolveStatusWrite(env);
+  if (!tasks.length && !note) throw new Fail(`REJECTED: close refused: ${pkg.name} has no tasks on its board, so nothing is verified; pass --owner-note to close it knowingly`, 1);
+  if (open.length && !note) throw new Fail(`REJECTED: close refused: ${open.length} task(s) not verified (${open.map((t) => t.id).join(', ')}); pass --owner-note to override`, 1);
+  if (!pkg.done && fs.existsSync(target)) throw new Fail('close --move refused: 0-done target already exists', 1);
+  const sw = w();
   for (const s of (doc.sessions || []).filter((x) => !x.ended_at)) {
-    const r = writer(w, ['session', 'end', '--session-id', s.session_id, '--by', 'conclude-it', '--impl', name], root);
+    const r = writer(sw, ['session', 'end', '--session-id', s.session_id, '--by', 'conclude-it', '--file', file], root);
     if (r.status !== 0) throw new Fail(`session end refused for ${s.session_id}: ${(r.stderr || '').trim()}; close not attempted`, r.status === 3 ? 3 : 1);
     out.push(`session end ${s.session_id}`);
   }
-  const args = ['close', '--by', 'conclude-it', '--move', '--impl', name];
+  // A package already in 0-done/ is closed in place (no --move); anything else takes the guarded close with --move.
+  const args = ['close', '--by', 'conclude-it', '--file', file];
+  if (!pkg.done) args.push('--move');
   if (note) args.push('--owner-note', note);
-  const r = writer(w, args, root);
-  if (r.status !== 0) throw new Fail(`status-write close refused: ${(r.stderr || '').trim()}`, r.status === 3 ? 3 : 1);
+  const r = writer(sw, args, root);
+  if (r.status !== 0) {
+    let frozenNow = false; try { frozenNow = readDoc().closed === true; } catch { /* unreadable */ }
+    if (!pkg.done && frozenNow && fs.existsSync(pkg.dir)) throw new Fail(`PARTIAL_FAILED: board closed, folder not moved (${(r.stderr || r.signal || '').toString().trim()}); re-run close to complete the move`, 1);
+    throw new Fail(`status-write close refused: ${(r.stderr || '').trim()}`, r.status === 3 ? 3 : 1);
+  }
   out.push((r.stdout || '').trim() || 'closed');
-  return { out, moved: path.join(base, '0-done', name) };
+  if (pkg.done) { out.push(`CLOSED_IN_PLACE ${path.relative(root, pkg.dir)}`); return { out, moved: null, outcome: 'CLOSED_IN_PLACE' }; }
+  out.push(`CLOSED_MOVED ${path.relative(root, target)}`);
+  return { out, moved: target, outcome: 'CLOSED_MOVED' };
 }
 
 export function main(argv = process.argv.slice(2), env = process.env) {

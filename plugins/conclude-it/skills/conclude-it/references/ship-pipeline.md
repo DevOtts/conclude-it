@@ -13,7 +13,7 @@ run exactly once, in the core.
 | S1 local gate | **mid-tier** verifier subagent (or the project's verifier agent): runs the REAL scripts, returns verdict + counts + failing output. RED fix loops via `/iterate` start mid-tier; escalate to the top tier if it thrashes |
 | S2 merge + deploy | **Main** — outward and authorization-sensitive; never delegate the deploy decision (the deploy skill's machinery may spawn its own agents) |
 | S3 prod gate | **mid-tier** verifier / `/full-qa`'s own machinery; Main reads the evidence and declares |
-| S4 archive | **small-model** subagent with the exact `git mv` paths; returns moved paths + fixed links |
+| S4 archive | **small-model** subagent with the exact `archive-package.mjs` command (and the CLOSEOUT rows Main authored); returns its outcome line + fixed links |
 | S5 backlog | Main authors the item content (session knowledge) → **small-model** subagent files the notes |
 | S6 PM/STATUS | **small-model** subagent with the exact rows to flip; returns the diff |
 
@@ -83,17 +83,37 @@ Only reachable with a green (or explicitly-accepted) local gate.
 
 ## S4 — Archive the epic's plan docs
 
-Move THIS epic's implementation/plan docs into a done archive so the active tree
-shows only in-flight work. **Archive into a `0-done/` sibling of wherever the
-package actually lives — not a fixed path:**
+Move THIS epic's implementation/plan package into the `0-done/` sibling of
+wherever it lives, so the active tree shows only in-flight work. **There is one
+way in, and it is a script — never a bare `git mv` or `mv`** (a folder in `0-done/`
+must never mean "shipped" when nobody checked):
 
-- `<repo>/docs/implementation/<epic>/` → `<repo>/docs/implementation/0-done/<epic>/`
-  (create the sibling if missing).
-- Any other docs home: that home's own done/archive convention.
-- Never move a plan out of its home repo just to archive it.
+```
+A=${CLAUDE_PLUGIN_ROOT}/skills/conclude-it/scripts/archive-package.mjs
+node "$A" --repo <repo root> --impl <name>   # or --dir <package dir> for another docs home
+          [--owner-note "<why unverified tasks stay, in the owner's words>"]
+          [--closeout-rows <rows.json>]       # only for a package without status.json
+```
 
-Mechanics: preserve history with `git mv`; fix any index/link pointing at the old
-path. If the plan spans two locations or no convention is obvious, **ask once**.
+What it does (CONTRACT 3.3); the first output line is the outcome:
+
+| Package has | Outcome |
+|---|---|
+| `status.json`, all tasks verified | guarded close (`ledger-card close` → `status-write close --by conclude-it --move`): `CLOSED_MOVED`, board `closed: true` |
+| `status.json`, unverified tasks, owner note | `CLOSED_MOVED`, the note lands in the board history |
+| `status.json`, unverified tasks, no note | `REJECTED`, nothing moved; the message names the unverified tasks. Ask the owner once, or leave it open. Never invent a note |
+| `status.json`, already in `0-done/` but `closed: false` | closed in place (`CLOSED_IN_PLACE`, no move) |
+| no `status.json`, no `CLOSEOUT.md` | `DENIED`, nothing moved. Write the CLOSEOUT: author one row per piece of the program into `rows.json` (`[{"piece","disposition":"shipped\|dropped\|carried","detail":"evidence or reason","backlog":"path"}]`) and re-run with `--closeout-rows`, or ask the owner once |
+| no `status.json`, `--closeout-rows` | `CLOSEOUT.md` is written from doc-it's template (`doc-it template closeout`; conclude-it keeps no copy), linted with `doc-it check closeout` before it lands, then moved. A row doc-it refuses (e.g. `carried` without a backlog path) → `REJECTED`, nothing written or moved |
+| no `status.json`, a hand-written `CLOSEOUT.md` | linted with `doc-it check closeout`; ok → moved, else `REJECTED` |
+| killed after the freeze, before the move | `PARTIAL_FAILED` (board closed, folder not moved). Re-run the same command: it completes the move with no second close entry |
+
+Without doc-it, a package with no `status.json` is `DENIED` with
+`[skip] doc-it not installed: check closeout` — it never moves on an unchecked
+CLOSEOUT. The move is one rename (git sees it as a rename on the next commit);
+then fix any index/link pointing at the old path. If the plan spans two
+locations or no convention is obvious, **ask once**. Never move a plan out of
+its home repo just to archive it.
 
 (The durable *content* promotion — `verified:` bumps, references — is the
 debrief's job in the core, not this move.)
