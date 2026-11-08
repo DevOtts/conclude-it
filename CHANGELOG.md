@@ -51,6 +51,20 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   writer (its marker line) or a `plan.json`. A hand-written legacy `STATUS.md` does not block.
 - **R2-L3** (round 2) regression: a freeze whose owner note is rewritten is REJECTED on the re-run
   (the fix is in build-it: `board_sha256` covers the close entry).
+- **R3-A1-M5** (round 3) the rename follow was beaten by 301 new files (the 300-file cap) or by a
+  rename made together with a rewrite (below git's 50% rename similarity). S4 no longer follows files.
+  It runs one uncapped history query over every `status.json` in the repo, on all refs
+  (`git log --all -m --no-renames --diff-filter=D`; with `--no-renames` a rename is a delete), plus
+  every `status.json` deleted from HEAD or the index but not committed. A board that vanished this way
+  and is not accounted for (a `status.json` back at that path, the path inside `0-done/`,
+  `<parent>/0-done/<name>/status.json` on disk, or an owner note recorded in a `0-done/` CLOSEOUT)
+  DENIES the CLOSEOUT path for every package, whether or not its folder still exists (a stub folder
+  would otherwise hide it). `--owner-note` naming that board's folder lets the archive go on; the
+  note is recorded in the CLOSEOUT (`<!-- archive-package owner-note boards: … -->` plus a visible
+  line), so later archives count the board as accounted for. Outside `docs/implementation(s)/` a
+  `status.json` counts when any committed version of it was a board.
+- **R3-L3** (round 3) a board left only on a history unrelated to HEAD (`git checkout --orphan`) is
+  treated as lost too, and every history lookup uses `--all`.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

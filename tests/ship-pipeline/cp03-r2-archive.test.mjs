@@ -47,7 +47,8 @@ test('R2-A1-M3 (a) git mv demo demo2 + git rm the board in the same commit: DENI
   const before = tree(r.root);
   const res = S4(['--repo', r.root, '--impl', 'demo2', '--closeout-rows', r.rows]);
   refused(r, res, before);
-  assert.match(res.err, /docs\/implementations\/demo\/status\.json existed in commit [0-9a-f]{12} \(this package's PLAN\.md lived in docs\/implementations\/demo\/; renamed here\)/);
+  // R3-A1-M5: the rename is caught by the history-wide check (the board under demo/ was deleted, demo/ has no close).
+  assert.match(res.err, /docs\/implementations\/demo\/status\.json was deleted in commit [0-9a-f]{12}, with no close/);
 });
 
 test('R2-A1-M3 (b) uncommitted mv demo demo3 + rm the board: DENIED, nothing moved', (t) => {
@@ -87,14 +88,19 @@ test('R2-A1-M3 a folder renamed only in case after the board was dropped is stil
   refused(r, res, before);
 });
 
-test('R2-A1-M3 control: a package that never had a board still closes through the CLOSEOUT, even beside another package whose board is deleted', (t) => {
+test('R2-A1-M3 control: a package that never had a board still closes through the CLOSEOUT once the owner names the other, deleted board (R3-A1-M5 rule)', (t) => {
   if (noDocIt(t)) return;
   const r = repo();
   fs.rmSync(path.join(r.impl, 'demo', 'status.json')); // unrelated package, folder still on disk
   const other = path.join(r.impl, 'other'); fs.mkdirSync(other); fs.writeFileSync(path.join(other, 'NOTES.md'), '# other, never had a board\n');
   git(r.root, 'add', `${IMPL}/other`); git(r.root, 'commit', '-q', '-m', 'other');
   git(r.root, 'mv', `${IMPL}/other`, `${IMPL}/other2`); git(r.root, 'commit', '-q', '-m', 'rename other');
-  const res = S4(['--repo', r.root, '--impl', 'other2', '--closeout-rows', r.rows]);
+  // R3-A1-M5: a board that vanished with no close blocks the CLOSEOUT path for every package until it is accounted for
+  // (a stub folder left behind must not hide it), so without a note this is DENIED, naming demo's board.
+  const denied = S4(['--repo', r.root, '--impl', 'other2', '--closeout-rows', r.rows]);
+  assert.equal(denied.code, 1, denied.out + denied.err);
+  assert.match(denied.err, /^DENIED: board deleted: docs\/implementations\/demo\/status\.json is deleted in the working tree/);
+  const res = S4(['--repo', r.root, '--impl', 'other2', '--closeout-rows', r.rows, '--owner-note', 'docs/implementations/demo is a separate package; its board removal is tracked elsewhere']);
   assert.equal(res.code, 0, res.out + res.err);
   assert.match(res.out, /^CLOSED_MOVED docs\/implementations\/0-done\/other2/);
 });
