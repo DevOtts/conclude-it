@@ -99,3 +99,18 @@ test('A1-M1 a board whose deletion was committed still exists in history: DENIED
   assert.equal(res.code, 1); assert.match(res.err, /^DENIED: board deleted: .* existed in commit [0-9a-f]{12}/);
   assert.ok(fs.existsSync(r.dir)); assert.equal(fs.existsSync(path.join(path.dirname(r.dir), '0-done')), false);
 });
+
+test('A1-M2 S4 CLOSEOUT rows with shipped "yes" or dropped "." are REJECTED by doc-it; nothing written or moved', (t) => {
+  if (noDocIt(t)) return;
+  for (const row of [{ piece: 'Core', disposition: 'shipped', detail: 'yes' }, { piece: 'Core', disposition: 'dropped', detail: '.' }]) {
+    const root = mkTmp('a1-m2-');
+    const dir = path.join(root, 'docs', 'implementations', 'demo'); fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'PLAN.md'), '# demo\n');
+    const rows = path.join(root, 'rows.json'); fs.writeFileSync(rows, JSON.stringify([row]));
+    const before = tree(root);
+    const res = S4(['--repo', root, '--impl', 'demo', '--closeout-rows', rows], docItEnv());
+    assert.equal(res.code, 1, res.out + res.err);
+    assert.match(res.err, /^REJECTED: CLOSEOUT refused by doc-it check closeout/);
+    assert.deepEqual(tree(root), before);
+  }
+});

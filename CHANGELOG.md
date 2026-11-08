@@ -36,6 +36,8 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
 - **A1-M1** deleting a tracked `status.json` sent the package down the CLOSEOUT path. S4 now checks
   git: a board tracked at HEAD, or present in the package's history, but missing from the working
   tree is DENIED (board deleted; restore it and use the guarded close). Never the CLOSEOUT path.
+- **A1-M2** regression: CLOSEOUT rows with `shipped` evidence "yes" or a `dropped` reason "."
+  are REJECTED by doc-it `check closeout` (doc-it's stricter evidence lint), nothing written.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
