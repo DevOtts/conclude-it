@@ -70,6 +70,17 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   top from the package itself (`git -C <pkg.dir> rev-parse --show-toplevel`, the innermost repo) and
   refuses (usage, exit 2, nothing moved) a package dir outside `--repo`, or one inside a git repo
   whose top differs from `--repo`'s (a submodule or nested repo), naming the repo to pass instead.
+- **R4-A1-M7** (round 4) any file named `status.json` at a lost board's old path or in
+  `0-done/<name>/` counted as accounting for it: an empty untracked placeholder, or a copy of another
+  package's closed board. Now a board back at its old path accounts only when it is a status board whose
+  `implementation` is its folder's name and git tracks it or its bytes are a committed version of that
+  path. A `0-done/<name>/status.json` accounts only when its `implementation` is `<name>`, it is
+  `closed: true` backed by a close entry by conclude-it with a `board_sha256`, and build-it
+  `status-write validate` accepts it (run through `DOIT_STATUS_WRITE` or an installed build-it; when
+  the writer cannot be found S4 is `DENIED: cannot verify`). A board deleted from a `0-done/` folder
+  (an archived package moved back out) is no longer skipped. A repo whose archived boards predate the
+  freeze (legacy `closed: false`) is DENIED until the owner closes them in place
+  (`archive-package --impl <name> [--owner-note …]`) or names them once in `--owner-note`.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

@@ -29,9 +29,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { close as guardedClose } from './ledger-card.mjs';
+import { close as guardedClose, resolveStatusWrite } from './ledger-card.mjs';
 import { locateDocIt, skipLine, docIt } from './docit-locate.mjs';
 
 class Outcome extends Error { constructor(kind, msg, code = 1) { super(`${kind}: ${msg}`); this.kind = kind; this.exitCode = code; } }
@@ -81,9 +81,15 @@ function move(root, pkg) {
 //      to HEAD (an orphan branch, R3-L3), plus every status.json tracked at HEAD or in the
 //      index that is missing on disk (an uncommitted delete or move). Outside docs/implementation(s)/ a path counts
 //      only when some committed version of it is a board (an object with `implementation` and a `waves` array).
-//      Such a board is accounted for, and skipped, when:
-//        - a status.json is on disk at that path again (restored, or re-created), or the path is inside a 0-done/ folder;
-//        - <parent>/0-done/<name>/status.json is on disk (the package was archived with its board);
+//      Such a board is accounted for, and skipped, when (R4-A1-M7: a file named status.json is not enough; it must be
+//      that package's board):
+//        - the status.json on disk at that path again is a board (`implementation` + a `waves` array) whose
+//          `implementation` is its folder's name, and git tracks it or its bytes are a committed version of that path;
+//          inside a 0-done/ folder it must instead pass the 0-done rule below;
+//        - <parent>/0-done/<name>/status.json is on disk and is <name>'s frozen board: `implementation` is <name>,
+//          `closed: true` backed by a close entry by conclude-it carrying board_sha256, and build-it `status-write
+//          validate` accepts it (which checks the digest). The writer is asked through DOIT_STATUS_WRITE (or an
+//          installed build-it); when it cannot be found the archive is DENIED (cannot verify);
 //        - a CLOSEOUT.md in a 0-done/ folder carries archive-package's owner-note record naming that board.
 //      Every other one is an orphan: a board that vanished with no close. The package being archived may be it,
 //      renamed, moved or rewritten, and git cannot always tell (rename detection needs 50% similarity), so the CLOSEOUT
@@ -92,7 +98,7 @@ function move(root, pkg) {
 // When core.ignorecase is set, git paths are matched case-insensitively (`:(icase)` pathspecs).
 const BOARD_ROOTS = ['docs/implementations', 'docs/implementation'];
 const OWNER_NOTE_RECORD = /<!--\s*archive-package owner-note boards:\s*([^>]*?)\s*-->/g;
-function boardHistory(top, dir) {
+function boardHistory(top, dir, env = process.env) {
   const g = (...a) => { try { return execFileSync('git', a, { cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 << 20 }); } catch { return ''; } };
   const icase = g('config', '--bool', 'core.ignorecase').trim() === 'true';
   const ps = (p) => (icase ? `:(icase)${p}` : `:(literal)${p}`);
@@ -147,21 +153,70 @@ function boardHistory(top, dir) {
       for (const m of txt.matchAll(OWNER_NOTE_RECORD)) for (const b of m[1].split(',').map((x) => x.trim()).filter(Boolean)) records.add(icase ? b.toLowerCase() : b);
     }
   };
+  // R4-A1-M7: is the status.json at repo path `rel` the board of the package named `name`?
+  const readBoard = (rel) => { try { const j = JSON.parse(fs.readFileSync(path.join(top, rel), 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) && Array.isArray(j.waves) ? j : null; } catch { return null; } };
+  const sameName = (a, b) => typeof a === 'string' && (icase ? a.toLowerCase() === b.toLowerCase() : a === b);
+  // An active board back at its old path: named for its folder, and tracked or byte-equal to a committed version.
+  const liveBoard = (rel, name) => {
+    const j = readBoard(rel);
+    if (!j) return 'is not a status board';
+    if (!sameName(j.implementation, name)) return `names "${String(j.implementation)}", not ${name}`;
+    if (g('ls-files', '--', ps(rel)).trim()) return null;
+    const blob = g('hash-object', '--', rel).trim();
+    const known = new Set(g('log', '--all', '--no-renames', '--format=', '--raw', '--no-abbrev', '--', ps(rel)).split('\n').flatMap((l) => l.split(/\s+/).slice(2, 4)));
+    return known.has(blob) ? null : 'is untracked and matches no committed version of that path';
+  };
+  // A board in 0-done/: named for its folder and frozen by the writer (validate checks the board_sha256 digest).
+  let writer;
+  const frozenBoard = (rel, name) => {
+    const j = readBoard(rel);
+    if (!j) return 'is not a status board';
+    if (!sameName(j.implementation, name)) return `names "${String(j.implementation)}", not ${name}`;
+    if (j.closed !== true) return 'is not closed';
+    const h = Array.isArray(j.history) ? j.history : [];
+    let last = null; for (let i = h.length - 1; i >= 0; i--) if (h[i] && h[i].task === '*') { last = h[i]; break; }
+    if (!last || last.to !== 'closed' || last.by !== 'conclude-it' || typeof last.board_sha256 !== 'string') return 'has no close entry by conclude-it with a board_sha256';
+    if (writer === undefined) {
+      try { writer = resolveStatusWrite(env); } catch (e) { throw new Outcome('DENIED', `cannot verify the archived board ${rel}: ${e.message}; set DOIT_STATUS_WRITE to build-it's status-write.mjs; nothing moved`); }
+    }
+    const v = spawnSync(process.execPath, [writer, 'validate', '--file', path.join(top, rel)], { encoding: 'utf8', cwd: top });
+    if (v.error || v.status === null) throw new Outcome('DENIED', `cannot verify the archived board ${rel}: status-write validate did not run (${v.error?.message || v.signal}); nothing moved`);
+    return v.status === 0 ? null : `fails status-write validate: ${(v.stderr || v.stdout).trim().split('\n')[0]}`;
+  };
   const readDone = new Set();
   const orphans = [];
-  for (const [p, how] of lost) {
-    if (p.split('/').some((s) => s.toLowerCase() === '0-done')) continue;
-    if (fs.existsSync(path.join(top, p))) continue;
+  for (const [p, how0] of lost) {
+    let how = how0;
     const folder = path.posix.dirname(p);
+    const name = path.posix.basename(folder);
     const parent = path.posix.dirname(folder);
-    const doneDir = path.join(top, parent, '0-done');
-    if (fs.existsSync(path.join(doneDir, path.posix.basename(folder), 'status.json'))) continue;
-    if (!readDone.has(doneDir)) { readDone.add(doneDir); readRecords(doneDir); }
+    const inDone = path.posix.basename(parent).toLowerCase() === '0-done';
+    // A status.json deeper inside an archived package (not its board) is the archived package's business.
+    if (!inDone && p.split('/').some((x) => x.toLowerCase() === '0-done')) continue;
+    // R4: a board deleted from a 0-done/ folder (an archived package moved back out) is lost too, unless it is back.
+    if (fs.existsSync(path.join(top, p))) {
+      const why = inDone ? frozenBoard(p, name) : liveBoard(p, name);
+      if (!why) continue;
+      how += `; the status.json now at that path ${why}`;
+    }
+    if (!inDone) {
+      const doneDir = path.join(top, parent, '0-done');
+      const doneRel = path.posix.join(parent, '0-done', name, 'status.json');
+      if (fs.existsSync(path.join(top, doneRel))) {
+        const why = frozenBoard(doneRel, name);
+        if (!why) continue;
+        how += `; ${doneRel} ${why}`;
+      }
+      if (!readDone.has(doneDir)) { readDone.add(doneDir); readRecords(doneDir); }
+    } else {
+      const doneDir = path.join(top, parent);
+      if (!readDone.has(doneDir)) { readDone.add(doneDir); readRecords(doneDir); }
+    }
     if (records.has(icase ? p.toLowerCase() : p)) continue;
     if (!inRoot(p) && !isBoard(p)) continue;
     orphans.push({ board: p, folder, how });
   }
-  return orphans.length ? { orphans } : null;
+  return orphans.length ? { orphans, icase } : null;
 }
 // The owner note names an orphan board when it holds the board's folder (repo-relative, or relative to the
 // docs/implementation(s)/ root) as a whole token.
@@ -242,14 +297,16 @@ export function archive(flags, env = process.env) {
   //    R3-A1-M5: any other board that vanished without a close (deleted on any ref, or missing from the working tree)
   //    may be this package renamed or rewritten, so the CLOSEOUT path also waits for it, unless --owner-note names it.
   const top = gitTop(pkg.dir);
-  const hist = top ? boardHistory(top, pkg.dir) : null;
+  const hist = top ? boardHistory(top, pkg.dir, env) : null;
   if (hist?.here) throw new Outcome('DENIED', `board deleted: ${hist.here}; ${path.relative(root, path.join(pkg.dir, 'status.json'))} is missing from the working tree; restore the board (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
   let noted = [];
   if (hist?.orphans) {
     const open = hist.orphans.filter((o) => !noteNames(flags['owner-note'], o.folder));
     if (open.length) {
       const list = open.slice(0, 5).map((o) => `${o.board} ${o.how}`).join('; ') + (open.length > 5 ? `; and ${open.length - 5} more` : '');
-      throw new Outcome('DENIED', `board deleted: ${list}, with no close: its folder has no board, it is not in a 0-done/ folder, and no archive-package owner note names it. This package may be that board's package, renamed, moved or rewritten, so the CLOSEOUT path is not allowed. If it is, restore the board and close through the guarded close. If that board is unrelated, pass --owner-note naming its folder (${open[0].folder}); the note is recorded in the CLOSEOUT; nothing moved`);
+      const legacy = open.find((o) => /0-done\/[^/]+\/status\.json (is not closed|has no close entry)/.test(o.how));
+      const hint = legacy ? ` If an archived 0-done/ board is that package's own board but was never frozen (a legacy board), close it in place first: archive-package --repo <repo> --impl ${path.posix.basename(legacy.folder)} [--owner-note TEXT].` : '';
+      throw new Outcome('DENIED', `board deleted: ${list}, with no close that accounts for it: no board of that package is back at that path or frozen in its 0-done/ folder, and no archive-package owner note names it. This package may be that board's package, renamed, moved or rewritten, so the CLOSEOUT path is not allowed. If it is, restore the board and close through the guarded close.${hint} If that board is unrelated, pass --owner-note naming its folder (${open[0].folder}); the note is recorded in the CLOSEOUT; nothing moved`);
     }
     noted = hist.orphans;
   }
