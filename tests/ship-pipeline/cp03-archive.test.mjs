@@ -114,3 +114,15 @@ test('A1-M2 S4 CLOSEOUT rows with shipped "yes" or dropped "." are REJECTED by d
     assert.deepEqual(tree(root), before);
   }
 });
+
+test('A1-L1 S4 refuses a symlinked package dir; nothing moved', (t) => {
+  if (noDocIt(t)) return;
+  const root = mkTmp('a1-l1-');
+  const real = path.join(root, 'elsewhere', 'demo'); fs.mkdirSync(real, { recursive: true });
+  fs.writeFileSync(path.join(real, 'CLOSEOUT.md'), '# CLOSEOUT: demo\n\n| Piece | Disposition | Evidence or reason | Backlog link |\n|---|---|---|---|\n| Core | dropped | superseded by the new design | |\n');
+  fs.mkdirSync(path.join(root, 'docs', 'implementations'), { recursive: true });
+  fs.symlinkSync(real, path.join(root, 'docs', 'implementations', 'demo'));
+  const res = S4(['--repo', root, '--impl', 'demo'], docItEnv());
+  assert.equal(res.code, 1, res.out); assert.match(res.err, /^REJECTED: .*is a symlink/);
+  assert.equal(fs.existsSync(path.join(root, 'docs', 'implementations', '0-done')), false);
+});

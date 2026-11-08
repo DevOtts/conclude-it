@@ -97,6 +97,8 @@ export function archive(flags, env = process.env) {
   const out = [];
   const root = path.resolve(flags.repo || process.cwd());
   const pkg = locate(root, flags);
+  // A1-L1: a symlinked package dir would move only the link; the content would stay outside the archive.
+  if (fs.lstatSync(pkg.dir).isSymbolicLink()) throw new Outcome('REJECTED', `${path.relative(root, pkg.dir)} is a symlink; archive the real folder; nothing moved`);
   // 1. status.json present: the guarded close (never a bare move).
   if (fs.existsSync(path.join(pkg.dir, 'status.json'))) {
     if (nonEmpty(flags['closeout-rows'])) throw new Outcome('USAGE', 'package has status.json: the board closes it; --closeout-rows is only for packages without a board', 2);

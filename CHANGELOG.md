@@ -38,6 +38,7 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   tree is DENIED (board deleted; restore it and use the guarded close). Never the CLOSEOUT path.
 - **A1-M2** regression: CLOSEOUT rows with `shipped` evidence "yes" or a `dropped` reason "."
   are REJECTED by doc-it `check closeout` (doc-it's stricter evidence lint), nothing written.
+- **A1-L1** S4 refuses a symlinked package dir (the link would move, the content would not).
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
