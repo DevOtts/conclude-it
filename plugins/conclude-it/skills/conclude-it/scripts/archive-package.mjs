@@ -9,7 +9,8 @@
 // Package has status.json  -> guarded close: ledger-card close -> status-write close --by conclude-it --move
 //                             (closed in place when the package is already in 0-done/).
 //   unverified tasks and no --owner-note -> REJECTED, nothing moved, the unverified task ids are named.
-// No status.json, but git tracks it at HEAD or it ever existed at that path -> DENIED (board deleted; restore it).
+// No status.json, but git tracks it at HEAD, it ever existed at that path, a folder this package was renamed from held
+//   one, or an uncommitted deletion moved it here -> DENIED (board deleted; restore it). Paths use the real on-disk case.
 // No status.json:
 //   CLOSEOUT.md present     -> `doc-it check closeout`; ok -> moved; problems -> REJECTED, nothing moved.
 //   --closeout-rows given   -> CLOSEOUT.md is written from `doc-it template closeout` (never a local copy), one row
@@ -65,16 +66,73 @@ function move(root, pkg) {
   try { fs.renameSync(pkg.dir, target); } catch (e) { throw new Outcome('REJECTED', `move failed, nothing moved: ${e.message}`); }
   return target;
 }
-// How git knows the package's board when the working tree has none: 'is tracked at HEAD', 'existed in commit <sha>',
-// or null (never tracked, or not a git repo).
+// How git knows the package's board when the working tree has none: a sentence for the DENIED line, or null (never
+// tracked, or not a git repo). Checked in order (CP-03 A1-M1, R2-A1-M3):
+//   1. <dir>/status.json is in the index, or ever existed at that path in history.
+//   2. Renames: every tracked file of the package is followed (`git log --follow`) to the folders it lived in; a past
+//      folder that ever held a status.json means the package had a board.
+//   3. Uncommitted: `git status` shows a status.json deleted (or renamed away) whose folder is gone from disk, or whose
+//      folder at HEAD shares a file with this package (an uncommitted `mv` + `rm`).
+// `dir` must already be the real on-disk path (realpath.native gives the true case on a case-insensitive filesystem);
+// when core.ignorecase is set, git paths are matched case-insensitively too (`:(icase)` pathspecs).
+const MAX_FOLLOW = 300;
 function deletedBoard(root, dir) {
-  const rel = path.relative(root, path.join(dir, 'status.json'));
-  const g = (...a) => execFileSync('git', a, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-  try { g('rev-parse', '--git-dir'); } catch { return null; }
-  try { if (g('ls-files', '--', rel)) return 'is tracked at HEAD'; } catch { /* no index */ }
-  try { const sha = g('log', '-1', '--format=%H', '--', rel); if (sha) return `existed in commit ${sha.slice(0, 12)}`; } catch { /* no commits */ }
+  const run = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 << 20 });
+  let top;
+  try { top = real(run(root, 'rev-parse', '--show-toplevel').trim()); } catch { return null; }
+  const g = (...a) => { try { return run(top, ...a); } catch { return ''; } };
+  const icase = g('config', '--bool', 'core.ignorecase').trim() === 'true';
+  const ps = (p) => (icase ? `:(icase)${p}` : `:(literal)${p}`);
+  const same = (a, b) => (icase ? a.toLowerCase() === b.toLowerCase() : a === b);
+  const relDir = path.relative(top, dir).split(path.sep).join('/');
+  if (!relDir || relDir.startsWith('..')) return null;
+  const board = `${relDir}/status.json`;
+  const everAt = (p) => g('log', '-1', '--format=%H', '--', ps(p)).trim();
+  // 1. this path
+  if (g('ls-files', '--', ps(board)).trim()) return `${board} is tracked at HEAD`;
+  let sha = everAt(board);
+  if (sha) return `${board} existed in commit ${sha.slice(0, 12)}`;
+  // 2. renames: the folders this package's tracked files lived in
+  const files = g('ls-files', '-z', '--', ps(relDir)).split('\0').filter(Boolean).slice(0, MAX_FOLLOW);
+  const seen = new Set([icase ? relDir.toLowerCase() : relDir]);
+  for (const f of files) {
+    const sub = f.slice(relDir.length + 1);
+    for (const n of g('log', '--follow', '--name-only', '--format=', '--', f).split('\n').map((x) => x.trim()).filter(Boolean)) {
+      const past = n.endsWith(`/${sub}`) ? n.slice(0, -(sub.length + 1)) : path.posix.dirname(n);
+      const key = icase ? past.toLowerCase() : past;
+      if (seen.has(key) || past === '.') continue;
+      seen.add(key);
+      sha = everAt(`${past}/status.json`);
+      if (sha) return `${past}/status.json existed in commit ${sha.slice(0, 12)} (this package's ${sub} lived in ${past}/; renamed here)`;
+    }
+  }
+  // 3. uncommitted: a deleted board whose package moved here
+  const st = g('status', '--porcelain=v1', '-z', '--untracked-files=no').split('\0');
+  const gone = [];
+  for (let i = 0; i < st.length; i++) {
+    const e = st[i]; if (e.length < 4) continue;
+    const x = e[0]; const p = e.slice(3);
+    if (x === 'R' || x === 'C') i++; // the next field is the original path
+    if (path.posix.basename(p).toLowerCase() === 'status.json' && !fs.existsSync(path.join(top, p))) gone.push(p);
+  }
+  if (gone.length) {
+    const here = new Set();
+    const walk = (d, depth) => { if (depth > 6 || here.size > MAX_FOLLOW) return; for (const ent of fs.readdirSync(d, { withFileTypes: true })) { const q = path.join(d, ent.name); if (ent.isDirectory()) walk(q, depth + 1); else if (ent.isFile()) here.add(q); } };
+    walk(dir, 0);
+    const list = [...here];
+    const blobs = new Set(list.length ? g('hash-object', '--', ...list).split('\n').map((x) => x.trim()).filter(Boolean) : []);
+    blobs.delete('e69de29bb2d1d6434b8b29ae775ad8c2e48c5391'); // the empty file matches everything
+    for (const p of gone) {
+      const old = path.posix.dirname(p);
+      if (same(old, relDir)) return `${p} is deleted in the working tree (uncommitted)`;
+      const oldGone = !fs.existsSync(path.join(top, old));
+      const shared = g('ls-tree', '-r', 'HEAD', '--', ps(old)).split('\n').some((l) => { const m = l.match(/^\d+ blob ([0-9a-f]{40})\t/); return m && blobs.has(m[1]); });
+      if (oldGone || shared) return `${p} is deleted in the working tree (uncommitted) and its folder ${old}/ ${shared ? 'shares files with this package' : 'is gone; this package may be it, moved'}; restore it, or commit the deletion first`;
+    }
+  }
   return null;
 }
+const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
 const cell = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').trim();
 
 // Fills doc-it's template: header placeholders, and the example rows of its table replaced by one row per piece.
@@ -95,10 +153,13 @@ function readRows(file) {
 
 export function archive(flags, env = process.env) {
   const out = [];
-  const root = path.resolve(flags.repo || process.cwd());
-  const pkg = locate(root, flags);
+  const root = real(path.resolve(flags.repo || process.cwd()));
+  let pkg = locate(root, flags);
   // A1-L1: a symlinked package dir would move only the link; the content would stay outside the archive.
   if (fs.lstatSync(pkg.dir).isSymbolicLink()) throw new Outcome('REJECTED', `${path.relative(root, pkg.dir)} is a symlink; archive the real folder; nothing moved`);
+  // R2-A1-M3: the real on-disk path and case (`--dir …/DEMO` on a case-insensitive filesystem opens demo/), so the git
+  // lookups and the 0-done target use the name git and the disk know.
+  { const dir = real(pkg.dir); pkg = { dir, name: path.basename(dir), done: path.basename(path.dirname(dir)) === '0-done' }; }
   // 1. status.json present: the guarded close (never a bare move).
   if (fs.existsSync(path.join(pkg.dir, 'status.json'))) {
     if (nonEmpty(flags['closeout-rows'])) throw new Outcome('USAGE', 'package has status.json: the board closes it; --closeout-rows is only for packages without a board', 2);
@@ -114,7 +175,7 @@ export function archive(flags, env = process.env) {
   // 2. no status.json. A board that git tracks at HEAD, or that ever existed at this path, was deleted: the package
   //    had a board, so only the guarded close may archive it (CP-03 A1-M1). Never take the CLOSEOUT path then.
   const gone = deletedBoard(root, pkg.dir);
-  if (gone) throw new Outcome('DENIED', `board deleted: ${path.relative(root, path.join(pkg.dir, 'status.json'))} ${gone}, but it is missing from the working tree; restore it (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
+  if (gone) throw new Outcome('DENIED', `board deleted: ${gone}; ${path.relative(root, path.join(pkg.dir, 'status.json'))} is missing from the working tree; restore the board (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
   // CLOSEOUT first.
   const closeout = path.join(pkg.dir, 'CLOSEOUT.md');
   const hasRows = nonEmpty(flags['closeout-rows']);

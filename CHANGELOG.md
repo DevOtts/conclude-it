@@ -39,6 +39,13 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
 - **A1-M2** regression: CLOSEOUT rows with `shipped` evidence "yes" or a `dropped` reason "."
   are REJECTED by doc-it `check closeout` (doc-it's stricter evidence lint), nothing written.
 - **A1-L1** S4 refuses a symlinked package dir (the link would move, the content would not).
+- **R2-A1-M3** (round 2) a deleted board escaped the git check through a rename (`git mv` + `git rm`
+  in one commit), an uncommitted `mv` + `rm`, or `--dir …/DEMO` on a case-insensitive filesystem.
+  S4 now resolves the package to its real on-disk path and case (`realpath.native`), matches git
+  paths case-insensitively when `core.ignorecase` is set, follows every tracked file of the package
+  (`git log --follow`) to the folders it lived in and DENIES when any of them held a `status.json`,
+  and DENIES an uncommitted deletion of a `status.json` whose folder is gone or shares files with
+  the package.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
