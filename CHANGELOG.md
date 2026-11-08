@@ -88,6 +88,9 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   CLOSEOUT), DENIES (`git error`) any history query that exits with a code it is not expected to, and
   DENIES when git sees `--repo` but not the package from its own folder. Outside git altogether
   (neither `--repo` nor the package is in a repo) the history checks are skipped, as before.
+- **R4-L7** (round 4) `--owner-note` matched a board's folder case-insensitively, so on a
+  case-sensitive repo `DEMO` accounted for `demo`'s board. It now matches case-insensitively only
+  when `core.ignorecase` is set.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

@@ -238,13 +238,14 @@ function boardHistory(top, dir, env = process.env) {
   return orphans.length ? { orphans, icase } : { icase };
 }
 // The owner note names an orphan board when it holds the board's folder (repo-relative, or relative to the
-// docs/implementation(s)/ root) as a whole token.
-function noteNames(note, folder) {
+// docs/implementation(s)/ root) as a whole token. Case-insensitive only when git matches paths that way
+// (core.ignorecase); on a case-sensitive repo `DEMO` does not name `demo` (CP-03 R4-L7).
+function noteNames(note, folder, icase = true) {
   if (!nonEmpty(note)) return false;
   const names = [folder];
-  for (const r of BOARD_ROOTS) if (folder.toLowerCase().startsWith(`${r}/`)) names.push(folder.slice(r.length + 1));
+  for (const r of BOARD_ROOTS) if ((icase ? folder.toLowerCase() : folder).startsWith(`${r}/`)) names.push(folder.slice(r.length + 1));
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return names.some((n) => new RegExp(`(^|[^\\w./-])${esc(n)}/?($|[^\\w./-])`, 'i').test(note));
+  return names.some((n) => new RegExp(`(^|[^\\w./-])${esc(n)}/?($|[^\\w./-])`, icase ? 'i' : '').test(note));
 }
 // R3-A1-M5: the owner note that accounted for orphan boards, recorded in the CLOSEOUT (an HTML comment doc-it's lint
 // ignores, plus a visible line). Later archives read the comment from CLOSEOUTs in 0-done/ folders.

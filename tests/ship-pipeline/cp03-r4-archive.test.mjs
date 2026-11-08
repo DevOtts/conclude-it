@@ -215,3 +215,18 @@ test('R4-A1-M8 control: outside git altogether the CLOSEOUT path still works (no
   const res = S4(['--repo', root, '--impl', 'study', '--closeout-rows', rowsDrop()], { GIT_CEILING_DIRECTORIES: path.dirname(root) });
   assert.equal(res.code, 0, res.out + res.err); assert.match(res.out, /^CLOSED_MOVED docs\/implementations\/0-done\/study/);
 });
+
+test('R4-L7 on a case-sensitive repo (core.ignorecase false) --owner-note DEMO does not name demo\'s board: DENIED; with core.ignorecase true it does', (t) => {
+  if (noDocIt(t)) return;
+  const root = mkTmp('r4-l7-'); mkpkg(root);
+  git(root, 'rm', '-q', '-r', `${IMPL}/demo`); git(root, 'commit', '-q', '-m', 'demo abandoned');
+  fs.mkdirSync(path.join(root, IMPL, 'p1'), { recursive: true }); fs.writeFileSync(path.join(root, IMPL, 'p1', 'NOTES.md'), '# p1\n');
+  git(root, 'config', 'core.ignorecase', 'false');
+  const before = tree(root);
+  const res = S4(['--repo', root, '--impl', 'p1', '--closeout-rows', rowsDrop(), '--owner-note', 'DEMO was abandoned, unrelated to p1']);
+  assert.equal(res.code, 1, res.out + res.err); assert.match(res.err, /^DENIED: board deleted: docs\/implementations\/demo\/status\.json/);
+  assert.deepEqual(tree(root), before, 'nothing written or moved');
+  git(root, 'config', 'core.ignorecase', 'true');
+  const ok = S4(['--repo', root, '--impl', 'p1', '--closeout-rows', rowsDrop(), '--owner-note', 'DEMO was abandoned, unrelated to p1']);
+  assert.equal(ok.code, 0, ok.out + ok.err); assert.match(ok.out, /^CLOSED_MOVED docs\/implementations\/0-done\/p1/);
+});
