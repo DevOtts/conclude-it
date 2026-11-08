@@ -16,6 +16,9 @@
 //   renamed or rewritten. --owner-note naming that board's folder lets the CLOSEOUT path go on; the note is recorded in
 //   the CLOSEOUT so later archives count that board as accounted for. Paths use the real on-disk case.
 // No status.json, git knows nothing, but a STATUS.md rendered by the board writer or a plan.json remains -> DENIED too.
+// No status.json and the history cannot be read: any git failure, git seeing --repo but not the package folder, or a
+//   shallow clone (unless --owner-note takes it on; the note is recorded in the CLOSEOUT) -> DENIED. Outside git
+//   altogether (neither --repo nor the package is in a repo) the history checks are skipped.
 // No status.json:
 //   CLOSEOUT.md present     -> `doc-it check closeout`; ok -> moved; problems -> REJECTED, nothing moved.
 //   --closeout-rows given   -> CLOSEOUT.md is written from `doc-it template closeout` (never a local copy), one row
@@ -29,7 +32,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { close as guardedClose, resolveStatusWrite } from './ledger-card.mjs';
 import { locateDocIt, skipLine, docIt } from './docit-locate.mjs';
@@ -98,9 +101,23 @@ function move(root, pkg) {
 // When core.ignorecase is set, git paths are matched case-insensitively (`:(icase)` pathspecs).
 const BOARD_ROOTS = ['docs/implementations', 'docs/implementation'];
 const OWNER_NOTE_RECORD = /<!--\s*archive-package owner-note boards:\s*([^>]*?)\s*-->/g;
+// R4-A1-M8: every git query fails closed. A query that exits with a code it is not expected to (or cannot run) is
+// DENIED (git error, board history unknown), never read as "git knows nothing".
+function gitRunner(top) {
+  return (args, ok = [0]) => {
+    const r = spawnSync('git', args, { cwd: top, encoding: 'utf8', maxBuffer: 256 << 20 });
+    if (r.error || r.status === null || !ok.includes(r.status)) {
+      const why = r.error ? r.error.message : r.status === null ? `killed by ${r.signal}` : `exit ${r.status}: ${String(r.stderr || '').trim().split('\n')[0]}`;
+      throw new Outcome('DENIED', `git error: git ${args.slice(0, 3).join(' ')} failed in ${top} (${why}); the board history is unknown, so the CLOSEOUT path is not allowed; fix git and re-run; nothing moved`);
+    }
+    return r.status === 0 ? r.stdout : '';
+  };
+}
 function boardHistory(top, dir, env = process.env) {
-  const g = (...a) => { try { return execFileSync('git', a, { cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 << 20 }); } catch { return ''; } };
-  const icase = g('config', '--bool', 'core.ignorecase').trim() === 'true';
+  const run = gitRunner(top);
+  const g = (...a) => run(a);
+  const icase = run(['config', '--bool', 'core.ignorecase'], [0, 1]).trim() === 'true';
+  const hasHead = run(['rev-parse', '--verify', '-q', 'HEAD'], [0, 1]).trim() !== '';
   const ps = (p) => (icase ? `:(icase)${p}` : `:(literal)${p}`);
   const allBoards = icase ? ':(glob,icase)**/status.json' : ':(glob)**/status.json';
   const relDir = path.relative(top, dir).split(path.sep).join('/');
@@ -127,21 +144,23 @@ function boardHistory(top, dir, env = process.env) {
     const t = l.trim(); if (!t) continue;
     if (/^[0-9a-f]{40}$/.test(t)) { cur = t; continue; }
     if (lost.has(t) || path.posix.basename(t).toLowerCase() !== 'status.json') continue;
-    if (!unrelated.has(cur)) unrelated.set(cur, !g('merge-base', 'HEAD', cur).trim());
+    if (!unrelated.has(cur)) unrelated.set(cur, !hasHead || !run(['merge-base', 'HEAD', cur], [0, 1]).trim());
     if (unrelated.get(cur)) lost.set(t, `lives only in commit ${cur.slice(0, 12)}, on a history unrelated to HEAD (an orphan branch)`);
   }
   // uncommitted: deleted from HEAD (staged or not), or added to the index and then deleted on disk
   const unc = (...a) => g('diff', '--no-renames', '--diff-filter=D', '--name-only', '-z', ...a, '--', allBoards).split('\0');
-  for (const t of new Set([...unc('HEAD'), ...unc()])) {
+  for (const t of new Set([...(hasHead ? unc('HEAD') : []), ...unc()])) {
     if (t && path.posix.basename(t).toLowerCase() === 'status.json' && !lost.has(t)) lost.set(t, 'is deleted in the working tree (uncommitted)');
   }
   const inRoot = (p) => BOARD_ROOTS.some((r) => (icase ? p.toLowerCase() : p).startsWith(`${r}/`));
   // Outside the board roots a status.json counts unless no committed version of it was ever a board; past 50 versions
   // it counts without looking (fail closed).
   const isBoard = (p) => {
-    const shas = g('log', '--all', '--no-renames', '--format=%H', '--', ps(p)).split('\n').map((x) => x.trim()).filter(Boolean);
+    // only commits where the path exists (added or modified), so every `show` below must succeed
+    const shas = g('log', '--all', '--no-renames', '--diff-filter=AM', '--format=%H', '--', ps(p)).split('\n').map((x) => x.trim()).filter(Boolean);
     if (shas.length > 50) return true;
-    const texts = shas.map((s) => g('show', `${s}:${p}`)); texts.push(g('show', `:${p}`));
+    const texts = shas.map((s) => g('show', `${s}:${p}`));
+    if (g('ls-files', '--', ps(p)).trim()) texts.push(g('show', `:${p}`));
     return texts.some((txt) => { try { const j = JSON.parse(txt); return !!j && typeof j === 'object' && 'implementation' in j && Array.isArray(j.waves); } catch { return false; } });
   };
   const records = new Set();
@@ -216,7 +235,7 @@ function boardHistory(top, dir, env = process.env) {
     if (!inRoot(p) && !isBoard(p)) continue;
     orphans.push({ board: p, folder, how });
   }
-  return orphans.length ? { orphans, icase } : null;
+  return orphans.length ? { orphans, icase } : { icase };
 }
 // The owner note names an orphan board when it holds the board's folder (repo-relative, or relative to the
 // docs/implementation(s)/ root) as a whole token.
@@ -243,9 +262,15 @@ function boardTrace(dir) {
   return fs.existsSync(plan) ? plan : null;
 }
 const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
-// The innermost git repo holding `cwd` (a submodule's own top, not the outer repo's), real path; null outside git.
+// The innermost git repo holding `cwd` (a submodule's own top, not the outer repo's), real path: { top }. Outside any
+// repo: { none } (git says "not a git repository"). Any other failure (git missing, a broken repo, dubious ownership,
+// a ceiling that hides the repo from a subfolder is caught by the caller): { error } (R4-A1-M8).
 function gitTop(cwd) {
-  try { return real(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()); } catch { return null; }
+  const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
+  if (!r.error && r.status === 0 && r.stdout.trim()) return { top: real(r.stdout.trim()) };
+  const msg = r.error ? r.error.message : String(r.stderr || '').trim().split('\n')[0] || `exit ${r.status}`;
+  if (!r.error && /not a git repository/i.test(msg)) return { none: msg };
+  return { error: msg };
 }
 const cell = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').trim();
 
@@ -278,8 +303,8 @@ export function archive(flags, env = process.env) {
   //   board checks below ask the repo that really holds the package.
   { const rel = path.relative(root, pkg.dir);
     if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Outcome('USAGE', `package dir ${pkg.dir} is outside --repo ${root}; pass --repo <the repo that holds the package>; nothing moved`, 2);
-    const pkgTop = gitTop(pkg.dir);
-    if (pkgTop && pkgTop !== gitTop(root)) throw new Outcome('USAGE', `${rel} is inside the git repo ${pkgTop} (a submodule or nested repo), not the repo of --repo ${root}; pass --repo ${pkgTop}; nothing moved`, 2); }
+    const pkgTop = gitTop(pkg.dir).top;
+    if (pkgTop && pkgTop !== gitTop(root).top) throw new Outcome('USAGE', `${rel} is inside the git repo ${pkgTop} (a submodule or nested repo), not the repo of --repo ${root}; pass --repo ${pkgTop}; nothing moved`, 2); }
   // 1. status.json present: the guarded close (never a bare move).
   if (fs.existsSync(path.join(pkg.dir, 'status.json'))) {
     if (nonEmpty(flags['closeout-rows'])) throw new Outcome('USAGE', 'package has status.json: the board closes it; --closeout-rows is only for packages without a board', 2);
@@ -296,12 +321,30 @@ export function archive(flags, env = process.env) {
   //    had a board, so only the guarded close may archive it (CP-03 A1-M1). Never take the CLOSEOUT path then.
   //    R3-A1-M5: any other board that vanished without a close (deleted on any ref, or missing from the working tree)
   //    may be this package renamed or rewritten, so the CLOSEOUT path also waits for it, unless --owner-note names it.
-  const top = gitTop(pkg.dir);
+  // R4-A1-M8: the history checks below must be able to run. Outside git altogether (neither the package nor --repo is
+  //   in a repo) they are skipped, as before. Any git failure, or git seeing --repo but not the package from its own
+  //   folder (GIT_CEILING_DIRECTORIES, safe.directory), is DENIED. A shallow clone cannot show the deleted board
+  //   (the deleting commit is cut off), so it is DENIED unless the owner takes it on with --owner-note.
+  const pt = gitTop(pkg.dir); const rt = gitTop(root);
+  const gitDenied = (why) => new Outcome('DENIED', `git error: ${why}; the board history is unknown, so the CLOSEOUT path is not allowed; nothing moved`);
+  if (pt.error) throw gitDenied(`git cannot read the repo at ${path.relative(root, pkg.dir) || '.'} (${pt.error})`);
+  if (rt.error) throw gitDenied(`git cannot read --repo ${root} (${rt.error})`);
+  if (rt.top && !pt.top) throw gitDenied(`git sees --repo ${rt.top} but not the package from its own folder ${path.relative(root, pkg.dir)} (${pt.none}; GIT_CEILING_DIRECTORIES or GIT_DIR set?)`);
+  const top = pt.top || null;
+  let shallowNote = '';
+  if (top) {
+    const sh = gitRunner(top)(['rev-parse', '--is-shallow-repository']).trim();
+    if (sh === 'true') {
+      if (!nonEmpty(flags['owner-note'])) throw new Outcome('DENIED', `shallow clone: board history unknown (commits before the clone's depth are cut off, so a deleted board cannot be seen); run git fetch --unshallow, or pass --owner-note to archive without the full history; nothing moved`);
+      shallowNote = `\nOwner note on archiving from a shallow clone (board history unknown): ${cell(flags['owner-note'])}\n`;
+      out.push('shallow clone: board history unknown; going on under the owner note (recorded in the CLOSEOUT)');
+    } else if (sh !== 'false') throw gitDenied(`git rev-parse --is-shallow-repository answered "${sh}"`);
+  }
   const hist = top ? boardHistory(top, pkg.dir, env) : null;
   if (hist?.here) throw new Outcome('DENIED', `board deleted: ${hist.here}; ${path.relative(root, path.join(pkg.dir, 'status.json'))} is missing from the working tree; restore the board (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
   let noted = [];
   if (hist?.orphans) {
-    const open = hist.orphans.filter((o) => !noteNames(flags['owner-note'], o.folder));
+    const open = hist.orphans.filter((o) => !noteNames(flags['owner-note'], o.folder, hist.icase));
     if (open.length) {
       const list = open.slice(0, 5).map((o) => `${o.board} ${o.how}`).join('; ') + (open.length > 5 ? `; and ${open.length - 5} more` : '');
       const legacy = open.find((o) => /0-done\/[^/]+\/status\.json (is not closed|has no close entry)/.test(o.how));
@@ -326,7 +369,7 @@ export function archive(flags, env = process.env) {
     const rows = readRows(flags['closeout-rows']);
     const t = docIt(cli, ['template', 'closeout'], { env });
     if (t.code !== 0) throw new Outcome('DENIED', `doc-it template closeout failed: ${t.err.trim()}; nothing moved`);
-    const text = fillTemplate(t.out, { name: pkg.name, date: flags.date || new Date().toISOString().slice(0, 10), by: flags.by || 'conclude-it', rows }) + ownerRecord(noted, flags['owner-note']);
+    const text = fillTemplate(t.out, { name: pkg.name, date: flags.date || new Date().toISOString().slice(0, 10), by: flags.by || 'conclude-it', rows }) + ownerRecord(noted, flags['owner-note']) + shallowNote;
     // Lint before it lands, so a refused CLOSEOUT leaves the package untouched.
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'closeout-'));
     const tmp = path.join(tmpDir, 'CLOSEOUT.md');
@@ -341,7 +384,7 @@ export function archive(flags, env = process.env) {
     const c = docIt(cli, ['check', 'closeout', closeout, '--root', root], { env });
     if (c.code !== 0) throw new Outcome('REJECTED', `${path.relative(root, closeout)} fails doc-it check closeout; nothing moved:\n${(c.out + c.err).trim()}`);
     out.push(`checked ${path.relative(root, closeout)}: ${c.out.trim()}`);
-    if (noted.length) fs.appendFileSync(closeout, ownerRecord(noted, flags['owner-note']));
+    if (noted.length || shallowNote) fs.appendFileSync(closeout, ownerRecord(noted, flags['owner-note']) + shallowNote);
   }
   const target = move(root, pkg);
   return { out: [target ? `CLOSED_MOVED ${path.relative(root, target)}` : `CLOSED_IN_PLACE ${path.relative(root, pkg.dir)}`, ...out] };

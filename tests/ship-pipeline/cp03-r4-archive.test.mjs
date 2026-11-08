@@ -147,3 +147,71 @@ test('R4-A1-M7 an archived package moved back out of 0-done/ with its board drop
   refused(root, res, before);
   assert.match(res.err, /docs\/implementations\/0-done\/other\/status\.json was deleted in commit/);
 });
+
+// mkpkg demo; git rm board + STATUS.md; git commit   (a full clone DENIES this: "existed in commit")
+function droppedInPlace(prefix) {
+  const root = mkTmp(prefix); mkpkg(root);
+  git(root, 'rm', '-q', '-f', `${IMPL}/demo/status.json`, `${IMPL}/demo/STATUS.md`);
+  git(root, 'commit', '-q', '-m', 'drop board');
+  return root;
+}
+const refusedHere = (root, res, before, kind) => {
+  assert.equal(res.code, 1, res.out + res.err);
+  assert.match(res.err, kind);
+  assert.doesNotMatch(res.out, /CLOSED_MOVED/);
+  assert.equal(fs.existsSync(path.join(root, IMPL, '0-done')), false, 'nothing moved to 0-done');
+  assert.deepEqual(tree(root), before, 'nothing written or moved');
+};
+
+test('R4-A1-M8 git clone --depth 1 hides the deleted board: DENIED (shallow clone), nothing moved; --owner-note takes it on and is recorded', (t) => {
+  if (noDocIt(t)) return;
+  const T = droppedInPlace('r4-m8sh-');
+  assert.match(S4(['--repo', T, '--impl', 'demo', '--closeout-rows', rowsDrop()]).err, /^DENIED: board deleted: .*existed in commit/, 'full clone: DENIED');
+  const SH = path.join(mkTmp('r4-m8sh-clone-'), 'sh');
+  git(path.dirname(SH), 'clone', '-q', '--depth', '1', `file://${T}`, SH);
+  assert.equal(git(SH, 'rev-parse', '--is-shallow-repository').trim(), 'true');
+  const before = tree(SH);
+  const res = S4(['--repo', SH, '--impl', 'demo', '--closeout-rows', rowsDrop()]);
+  refusedHere(SH, res, before, /^DENIED: shallow clone: board history unknown.*git fetch --unshallow.*--owner-note/);
+  // the owner takes it on: archived, and the CLOSEOUT says so
+  const ok = S4(['--repo', SH, '--impl', 'demo', '--closeout-rows', rowsDrop(), '--owner-note', 'archived from a CI checkout, owner checked the board history by hand']);
+  assert.equal(ok.code, 0, ok.out + ok.err); assert.match(ok.out, /^CLOSED_MOVED docs\/implementations\/0-done\/demo/);
+  assert.match(fs.readFileSync(path.join(SH, IMPL, '0-done', 'demo', 'CLOSEOUT.md'), 'utf8'), /Owner note on archiving from a shallow clone \(board history unknown\): archived from a CI checkout/);
+  // git fetch --unshallow (the fix the message names) makes the clone whole
+  git(SH, 'fetch', '-q', '--unshallow');
+  assert.equal(git(SH, 'rev-parse', '--is-shallow-repository').trim(), 'false');
+});
+
+test('R4-A1-M8 GIT_CEILING_DIRECTORIES=$T/docs hides the repo from the package folder: DENIED (git error), nothing moved', (t) => {
+  if (noDocIt(t)) return;
+  const T = droppedInPlace('r4-m8ceil-');
+  const before = tree(T);
+  const res = S4(['--repo', T, '--impl', 'demo', '--closeout-rows', rowsDrop()], { GIT_CEILING_DIRECTORIES: path.join(T, 'docs') });
+  refusedHere(T, res, before, /^DENIED: git error: git sees --repo .* but not the package from its own folder docs\/implementations\/demo/);
+});
+
+test('R4-A1-M8 any git failure in a history query is DENIED (git error), never read as "no history"', (t) => {
+  if (noDocIt(t)) return;
+  const T = droppedInPlace('r4-m8fail-');
+  // a git on PATH that fails every `log` (a broken object store, a killed process, ...), real git otherwise
+  const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = mkTmp('r4-m8bin-');
+  fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\nfor a in "$@"; do [ "$a" = log ] && { echo "fatal: simulated failure" >&2; exit 128; }; done\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
+  const before = tree(T);
+  const res = S4(['--repo', T, '--impl', 'demo', '--closeout-rows', rowsDrop()], { PATH: `${bin}:${process.env.PATH}` });
+  refusedHere(T, res, before, /^DENIED: git error: git log --all -1 failed in .*simulated failure/);
+  // a broken repo (unparseable .git/config): DENIED, not read as "not a git repository"
+  const B = droppedInPlace('r4-m8broken-');
+  fs.writeFileSync(path.join(B, '.git', 'config'), '[core\nbroken');
+  const beforeB = tree(B);
+  const rb = S4(['--repo', B, '--impl', 'demo', '--closeout-rows', rowsDrop()]);
+  refusedHere(B, rb, beforeB, /^DENIED: git error: git cannot read/);
+});
+
+test('R4-A1-M8 control: outside git altogether the CLOSEOUT path still works (no history to ask)', (t) => {
+  if (noDocIt(t)) return;
+  const root = mkTmp('r4-m8nogit-');
+  fs.mkdirSync(path.join(root, IMPL, 'study'), { recursive: true }); fs.writeFileSync(path.join(root, IMPL, 'study', 'NOTES.md'), '# study\n');
+  const res = S4(['--repo', root, '--impl', 'study', '--closeout-rows', rowsDrop()], { GIT_CEILING_DIRECTORIES: path.dirname(root) });
+  assert.equal(res.code, 0, res.out + res.err); assert.match(res.out, /^CLOSED_MOVED docs\/implementations\/0-done\/study/);
+});

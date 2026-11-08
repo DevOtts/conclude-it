@@ -81,6 +81,13 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   (an archived package moved back out) is no longer skipped. A repo whose archived boards predate the
   freeze (legacy `closed: false`) is DENIED until the owner closes them in place
   (`archive-package --impl <name> [--owner-note …]`) or names them once in `--owner-note`.
+- **R4-A1-M8** (round 4) in a shallow clone the commit that deleted a board is cut off, and every git
+  failure read as "no history" (`g()` returned `''`), so `GIT_CEILING_DIRECTORIES` or a broken repo
+  skipped every board check. On the no-board path S4 now DENIES a shallow clone ("shallow clone: board
+  history unknown; run git fetch --unshallow, or pass --owner-note"; the note is recorded in the
+  CLOSEOUT), DENIES (`git error`) any history query that exits with a code it is not expected to, and
+  DENIES when git sees `--repo` but not the package from its own folder. Outside git altogether
+  (neither `--repo` nor the package is in a repo) the history checks are skipped, as before.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
