@@ -49,6 +49,8 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
 - **R2-L2** (round 2) a board git never saw (never committed, or no git) could be deleted to open the
   CLOSEOUT path. S4 now DENIES it when the package still holds a `STATUS.md` rendered by the board
   writer (its marker line) or a `plan.json`. A hand-written legacy `STATUS.md` does not block.
+- **R2-L3** (round 2) regression: a freeze whose owner note is rewritten is REJECTED on the re-run
+  (the fix is in build-it: `board_sha256` covers the close entry).
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

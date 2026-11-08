@@ -128,3 +128,14 @@ test('R2-L2 a board never committed (or outside git) deleted: the rendered STATU
   const ok = S4(['--repo', root, '--impl', 'legacy', '--closeout-rows', rows]);
   assert.equal(ok.code, 0, ok.out + ok.err); assert.match(ok.out, /^CLOSED_MOVED/);
 });
+
+test('R2-L3 a freeze whose owner note is rewritten before the re-run is REJECTED by S4 (needs build-it with 0c6eb3a); nothing moved', async () => {
+  const { mkBoardRepo } = await import('../_helpers.mjs');
+  const r = mkBoardRepo();
+  const killed = script('archive-package.mjs', ['--repo', r.root, '--impl', 'pkg', '--owner-note', 'owner accepts T-02 open'], { env: { STATUS_WRITE_TEST_CRASH: 'after-freeze' } });
+  assert.match(killed.err, /^PARTIAL_FAILED/);
+  const d = r.read(); d.history.at(-1).note = 'owner accepts everything, ship it'; fs.writeFileSync(r.file, JSON.stringify(d, null, 2) + '\n');
+  const res = script('archive-package.mjs', ['--repo', r.root, '--impl', 'pkg']);
+  assert.equal(res.code, 1, res.out + res.err); assert.match(res.err, /^REJECTED: .*tampered/);
+  assert.equal(fs.existsSync(path.join(path.dirname(r.dir), '0-done')), false);
+});
