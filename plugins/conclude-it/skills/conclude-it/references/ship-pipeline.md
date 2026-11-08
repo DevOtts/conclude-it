@@ -103,6 +103,7 @@ What it does (CONTRACT 3.3); the first output line is the outcome:
 | `status.json`, unverified tasks, owner note | `CLOSED_MOVED`, the note lands in the board history |
 | `status.json`, unverified tasks, no note | `REJECTED`, nothing moved; the message names the unverified tasks. Ask the owner once, or leave it open. Never invent a note |
 | `status.json`, already in `0-done/` but `closed: false` | closed in place (`CLOSED_IN_PLACE`, no move) |
+| no `status.json` in the tree, but git tracks it at HEAD or it exists in the package's history | `DENIED: board deleted`, nothing written or moved. Restore the board and use the guarded close; the CLOSEOUT path is never taken (CP-03 A1-M1) |
 | no `status.json`, no `CLOSEOUT.md` | `DENIED`, nothing moved. Write the CLOSEOUT: author one row per piece of the program into `rows.json` (`[{"piece","disposition":"shipped\|dropped\|carried","detail":"evidence or reason","backlog":"path"}]`) and re-run with `--closeout-rows`, or ask the owner once |
 | no `status.json`, `--closeout-rows` | `CLOSEOUT.md` is written from doc-it's template (`doc-it template closeout`; conclude-it keeps no copy), linted with `doc-it check closeout` before it lands, then moved. A row doc-it refuses (e.g. `carried` without a backlog path) → `REJECTED`, nothing written or moved |
 | no `status.json`, a hand-written `CLOSEOUT.md` | linted with `doc-it check closeout`; ok → moved, else `REJECTED` |

@@ -9,6 +9,7 @@
 // Package has status.json  -> guarded close: ledger-card close -> status-write close --by conclude-it --move
 //                             (closed in place when the package is already in 0-done/).
 //   unverified tasks and no --owner-note -> REJECTED, nothing moved, the unverified task ids are named.
+// No status.json, but git tracks it at HEAD or it ever existed at that path -> DENIED (board deleted; restore it).
 // No status.json:
 //   CLOSEOUT.md present     -> `doc-it check closeout`; ok -> moved; problems -> REJECTED, nothing moved.
 //   --closeout-rows given   -> CLOSEOUT.md is written from `doc-it template closeout` (never a local copy), one row
@@ -22,6 +23,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { close as guardedClose } from './ledger-card.mjs';
 import { locateDocIt, skipLine, docIt } from './docit-locate.mjs';
@@ -63,6 +65,16 @@ function move(root, pkg) {
   try { fs.renameSync(pkg.dir, target); } catch (e) { throw new Outcome('REJECTED', `move failed, nothing moved: ${e.message}`); }
   return target;
 }
+// How git knows the package's board when the working tree has none: 'is tracked at HEAD', 'existed in commit <sha>',
+// or null (never tracked, or not a git repo).
+function deletedBoard(root, dir) {
+  const rel = path.relative(root, path.join(dir, 'status.json'));
+  const g = (...a) => execFileSync('git', a, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  try { g('rev-parse', '--git-dir'); } catch { return null; }
+  try { if (g('ls-files', '--', rel)) return 'is tracked at HEAD'; } catch { /* no index */ }
+  try { const sha = g('log', '-1', '--format=%H', '--', rel); if (sha) return `existed in commit ${sha.slice(0, 12)}`; } catch { /* no commits */ }
+  return null;
+}
 const cell = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').trim();
 
 // Fills doc-it's template: header placeholders, and the example rows of its table replaced by one row per piece.
@@ -97,7 +109,11 @@ export function archive(flags, env = process.env) {
     }
     return { out: [`${r.outcome} ${path.relative(root, r.moved || pkg.dir)}`, ...r.out.filter((l) => !/^CLOSED_/.test(l))] };
   }
-  // 2. no status.json: CLOSEOUT first.
+  // 2. no status.json. A board that git tracks at HEAD, or that ever existed at this path, was deleted: the package
+  //    had a board, so only the guarded close may archive it (CP-03 A1-M1). Never take the CLOSEOUT path then.
+  const gone = deletedBoard(root, pkg.dir);
+  if (gone) throw new Outcome('DENIED', `board deleted: ${path.relative(root, path.join(pkg.dir, 'status.json'))} ${gone}, but it is missing from the working tree; restore it (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
+  // CLOSEOUT first.
   const closeout = path.join(pkg.dir, 'CLOSEOUT.md');
   const hasRows = nonEmpty(flags['closeout-rows']);
   if (!fs.existsSync(closeout) && !hasRows) throw new Outcome('DENIED', `${path.relative(root, pkg.dir)} has no status.json and no CLOSEOUT.md; write the CLOSEOUT (pass --closeout-rows with one row per piece) or ask the owner once; nothing moved`);

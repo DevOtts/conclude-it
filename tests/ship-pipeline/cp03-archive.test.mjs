@@ -61,3 +61,41 @@ test('A1-H2 an empty board: status-write close --move directly and S4 both refus
   assert.equal(res.code, 1); assert.match(res.err, /^REJECTED: .*no tasks/);
   assert.deepEqual(tree(r.root), before); assert.equal(fs.existsSync(doneDir(r)), false);
 });
+
+// A real git repo with a committed board for package demo (T-1, T-2 not started).
+function trackedBoardRepo() {
+  const root = mkTmp('a1-m1-');
+  git(root, 'init', '-q', '-b', 'main');
+  const dir = path.join(root, 'docs', 'implementations', 'demo');
+  fs.mkdirSync(dir, { recursive: true });
+  const plan = path.join(root, 'plan.json');
+  fs.writeFileSync(plan, JSON.stringify({ implementation: 'demo', waves: [{ id: 'W1', title: 'W', tasks: [{ id: 'T-1', title: 'a' }, { id: 'T-2', title: 'b' }] }], pieces: [] }));
+  assert.equal(sw(['init', '--file', path.join(dir, 'status.json'), '--plan', plan, '--by', 'plan-it'], root).code, 0);
+  git(root, 'add', '-A'); git(root, 'commit', '-q', '-m', 'board');
+  const rows = path.join(mkTmp('rows-'), 'rows.json');
+  fs.writeFileSync(rows, JSON.stringify([{ piece: 'Core', disposition: 'shipped', detail: 'yes' }]));
+  return { root, dir, rows };
+}
+
+test('A1-M1 a tracked status.json deleted from the working tree: DENIED (board deleted), never the CLOSEOUT path', (t) => {
+  if (noDocIt(t)) return;
+  const r = trackedBoardRepo();
+  for (const f of ['status.json', 'STATUS.md']) fs.rmSync(path.join(r.dir, f), { force: true });
+  const before = tree(r.root);
+  const res = S4(['--repo', r.root, '--impl', 'demo', '--closeout-rows', r.rows], docItEnv());
+  assert.equal(res.code, 1, res.out + res.err);
+  assert.match(res.err, /^DENIED: board deleted: docs\/implementations\/demo\/status\.json is tracked at HEAD/);
+  assert.equal(fs.existsSync(path.join(r.dir, 'CLOSEOUT.md')), false, 'no CLOSEOUT written');
+  assert.deepEqual(tree(r.root), before);
+});
+
+test('A1-M1 a board whose deletion was committed still exists in history: DENIED, even with a hand-written CLOSEOUT', (t) => {
+  if (noDocIt(t)) return;
+  const r = trackedBoardRepo();
+  git(r.root, 'rm', '-q', '-r', 'docs/implementations/demo/status.json');
+  git(r.root, 'commit', '-q', '-m', 'drop board');
+  fs.writeFileSync(path.join(r.dir, 'CLOSEOUT.md'), '# CLOSEOUT: demo\n\n| Piece | Disposition | Evidence or reason | Backlog link |\n|---|---|---|---|\n| Core | dropped | superseded by the new design | |\n');
+  const res = S4(['--repo', r.root, '--impl', 'demo'], docItEnv());
+  assert.equal(res.code, 1); assert.match(res.err, /^DENIED: board deleted: .* existed in commit [0-9a-f]{12}/);
+  assert.ok(fs.existsSync(r.dir)); assert.equal(fs.existsSync(path.join(path.dirname(r.dir), '0-done')), false);
+});
