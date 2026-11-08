@@ -98,3 +98,33 @@ test('R2-A1-M3 control: a package that never had a board still closes through th
   assert.equal(res.code, 0, res.out + res.err);
   assert.match(res.out, /^CLOSED_MOVED docs\/implementations\/0-done\/other2/);
 });
+
+test('R2-L2 a board never committed (or outside git) deleted: the rendered STATUS.md or plan.json left behind DENIES the CLOSEOUT path', (t) => {
+  if (noDocIt(t)) return;
+  for (const left of ['STATUS.md', 'plan.json']) {
+    const root = mkTmp('r2-l2-'); // no git at all
+    const dir = path.join(root, IMPL, 'demo'); fs.mkdirSync(dir, { recursive: true });
+    const plan = path.join(root, 'plan.json');
+    fs.writeFileSync(plan, JSON.stringify({ implementation: 'demo', waves: [{ id: 'W1', title: 'W', tasks: [{ id: 'T-1', title: 'a' }] }], pieces: [] }));
+    assert.equal(sw(['init', '--file', path.join(dir, 'status.json'), '--plan', plan, '--by', 'plan-it'], root).code, 0);
+    if (left === 'plan.json') fs.copyFileSync(plan, path.join(dir, 'plan.json'));
+    fs.rmSync(path.join(dir, 'status.json'));
+    if (left === 'plan.json') fs.rmSync(path.join(dir, 'STATUS.md'), { force: true });
+    else assert.ok(fs.readFileSync(path.join(dir, 'STATUS.md'), 'utf8').startsWith('<!-- generated from status.json'), 'the writer rendered STATUS.md');
+    const rows = path.join(mkTmp('rows-'), 'rows-drop.json');
+    fs.writeFileSync(rows, JSON.stringify([{ piece: 'Core', disposition: 'dropped', detail: 'superseded by the new design' }]));
+    const before = tree(root);
+    const res = S4(['--repo', root, '--impl', 'demo', '--closeout-rows', rows]);
+    assert.equal(res.code, 1, `${left}: ${res.out}${res.err}`);
+    assert.match(res.err, new RegExp(`^DENIED: board deleted: .*docs/implementations/demo/${left.replace('.', '\\.')} shows the package had one`));
+    assert.deepEqual(tree(root), before, 'nothing written or moved');
+  }
+  // control: a hand-written legacy STATUS.md (no writer marker) does not block the CLOSEOUT path
+  const root = mkTmp('r2-l2-ok-');
+  const dir = path.join(root, IMPL, 'legacy'); fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'STATUS.md'), '# STATUS — legacy\n\nAll done.\n');
+  const rows = path.join(mkTmp('rows-'), 'rows-drop.json');
+  fs.writeFileSync(rows, JSON.stringify([{ piece: 'Core', disposition: 'dropped', detail: 'superseded by the new design' }]));
+  const ok = S4(['--repo', root, '--impl', 'legacy', '--closeout-rows', rows]);
+  assert.equal(ok.code, 0, ok.out + ok.err); assert.match(ok.out, /^CLOSED_MOVED/);
+});

@@ -46,6 +46,9 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   (`git log --follow`) to the folders it lived in and DENIES when any of them held a `status.json`,
   and DENIES an uncommitted deletion of a `status.json` whose folder is gone or shares files with
   the package.
+- **R2-L2** (round 2) a board git never saw (never committed, or no git) could be deleted to open the
+  CLOSEOUT path. S4 now DENIES it when the package still holds a `STATUS.md` rendered by the board
+  writer (its marker line) or a `plan.json`. A hand-written legacy `STATUS.md` does not block.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

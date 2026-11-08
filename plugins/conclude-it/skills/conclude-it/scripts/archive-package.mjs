@@ -11,6 +11,7 @@
 //   unverified tasks and no --owner-note -> REJECTED, nothing moved, the unverified task ids are named.
 // No status.json, but git tracks it at HEAD, it ever existed at that path, a folder this package was renamed from held
 //   one, or an uncommitted deletion moved it here -> DENIED (board deleted; restore it). Paths use the real on-disk case.
+// No status.json, git knows nothing, but a STATUS.md rendered by the board writer or a plan.json remains -> DENIED too.
 // No status.json:
 //   CLOSEOUT.md present     -> `doc-it check closeout`; ok -> moved; problems -> REJECTED, nothing moved.
 //   --closeout-rows given   -> CLOSEOUT.md is written from `doc-it template closeout` (never a local copy), one row
@@ -132,6 +133,15 @@ function deletedBoard(root, dir) {
   }
   return null;
 }
+// The writer's render marker (build-it status-render RENDER_MARKER, first line of a generated STATUS.md).
+const RENDER_MARKER = '<!-- generated from status.json by status-write';
+function boardTrace(dir) {
+  for (const f of [path.join(dir, 'STATUS.md'), path.join(dir, 'delivery', 'STATUS.md')]) {
+    try { if (fs.readFileSync(f, 'utf8').slice(0, 200).trimStart().startsWith(RENDER_MARKER)) return f; } catch { /* absent */ }
+  }
+  const plan = path.join(dir, 'plan.json');
+  return fs.existsSync(plan) ? plan : null;
+}
 const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
 const cell = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').trim();
 
@@ -176,6 +186,11 @@ export function archive(flags, env = process.env) {
   //    had a board, so only the guarded close may archive it (CP-03 A1-M1). Never take the CLOSEOUT path then.
   const gone = deletedBoard(root, pkg.dir);
   if (gone) throw new Outcome('DENIED', `board deleted: ${gone}; ${path.relative(root, path.join(pkg.dir, 'status.json'))} is missing from the working tree; restore the board (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
+  // R2-L2: a board git never saw (never committed, or no git) leaves traces the board writer and plan-it put there: a
+  //   STATUS.md rendered from status.json (its first line is the writer's marker) or plan.json. Either one means the
+  //   package had a board, so the CLOSEOUT path is not allowed.
+  const trace = boardTrace(pkg.dir);
+  if (trace) throw new Outcome('DENIED', `board deleted: ${path.relative(root, path.join(pkg.dir, 'status.json'))} is missing, but ${path.relative(root, trace)} shows the package had one; restore the board and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
   // CLOSEOUT first.
   const closeout = path.join(pkg.dir, 'CLOSEOUT.md');
   const hasRows = nonEmpty(flags['closeout-rows']);
