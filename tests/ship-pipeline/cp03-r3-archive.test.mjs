@@ -124,5 +124,47 @@ test('R3-L3 git checkout --orphan hides the board from HEAD\'s history (the old 
   assert.match(res.err, /docs\/implementations\/demo\/status\.json lives only in commit [0-9a-f]{12}, on a history unrelated to HEAD/);
 });
 
+test('R3-A1-M6 (1) --repo <empty dir> --dir <package elsewhere, board deleted>: refused, nothing moved', (t) => {
+  if (noDocIt(t)) return;
+  const T = mkTmp('t-x1-'); const dir = mkpkg(T);
+  fs.rmSync(path.join(dir, 'status.json')); fs.rmSync(path.join(dir, 'STATUS.md'));
+  const empty = mkTmp('empty-');
+  const before = tree(T);
+  const res = S4(['--repo', empty, '--dir', path.join(T, IMPL, 'demo'), '--closeout-rows', rowsDrop()]);
+  refused(T, res, before, { code: 2, kind: /^archive-package: usage: package dir .*docs\/implementations\/demo is outside --repo / });
+  assert.deepEqual(fs.readdirSync(empty), [], 'nothing written into --repo');
+});
+
+test('R3-A1-M6 (2) --repo <unrelated git repo> --dir <same package, absolute>: refused, nothing moved', (t) => {
+  if (noDocIt(t)) return;
+  const T = mkTmp('t-x2-'); const dir = mkpkg(T);
+  fs.rmSync(path.join(dir, 'status.json')); fs.rmSync(path.join(dir, 'STATUS.md'));
+  const other = mkTmp('other-'); git(other, 'init', '-q', '-b', 'main');
+  const before = tree(T);
+  const res = S4(['--repo', other, '--dir', path.join(T, IMPL, 'demo'), '--closeout-rows', rowsDrop()]);
+  refused(T, res, before, { code: 2, kind: /^archive-package: usage: package dir .* is outside --repo / });
+});
+
+test('R3-A1-M6 (3) a package inside a submodule (board deleted and committed there), --repo <outer repo>: refused naming the submodule; with --repo <submodule>: DENIED', (t) => {
+  if (noDocIt(t)) return;
+  const sub = mkTmp('sub-src-'); mkpkg(sub);
+  git(sub, 'rm', '-q', `${IMPL}/demo/status.json`, `${IMPL}/demo/STATUS.md`); git(sub, 'commit', '-q', '-m', 'drop board');
+  const outer = mkTmp('outer-'); git(outer, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(outer, 'README.md'), 'outer\n'); git(outer, 'add', '-A'); git(outer, 'commit', '-q', '-m', 'outer');
+  git(outer, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, 'docs-sub');
+  git(outer, 'commit', '-q', '-m', 'add submodule');
+  const subTop = fs.realpathSync(path.join(outer, 'docs-sub'));
+  const before = tree(outer);
+  const res = S4(['--repo', outer, '--dir', `docs-sub/${IMPL}/demo`, '--closeout-rows', rowsDrop()]);
+  assert.equal(res.code, 2, res.out + res.err);
+  assert.match(res.err, /^archive-package: usage: docs-sub\/docs\/implementations\/demo is inside the git repo .*docs-sub \(a submodule or nested repo\)/);
+  assert.ok(res.err.includes(`pass --repo ${subTop}`), res.err);
+  assert.deepEqual(tree(outer), before, 'nothing written or moved');
+  const inSub = S4(['--repo', subTop, '--impl', 'demo', '--closeout-rows', rowsDrop()]);
+  assert.equal(inSub.code, 1, inSub.out + inSub.err);
+  assert.match(inSub.err, /^DENIED: board deleted: docs\/implementations\/demo\/status\.json existed in commit/);
+  assert.deepEqual(tree(outer), before, 'nothing written or moved');
+});
+
 import { spawnSync } from 'node:child_process';
 function spawnDocIt(args) { return spawnSync(process.execPath, [DOC_IT, ...args], { encoding: 'utf8' }).status; }

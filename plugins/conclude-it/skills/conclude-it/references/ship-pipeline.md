@@ -99,6 +99,7 @@ What it does (CONTRACT 3.3); the first output line is the outcome:
 
 | Package has | Outcome |
 |---|---|
+| a package dir outside `--repo`, or inside a submodule or nested repo whose top differs from `--repo`'s | usage error (exit 2), nothing moved; the message names the repo to pass as `--repo`. The board checks always ask the package's own repo (CP-03 R3-A1-M6) |
 | `status.json`, all tasks verified | guarded close (`ledger-card close` → `status-write close --by conclude-it --move`): `CLOSED_MOVED`, board `closed: true` |
 | `status.json`, unverified tasks, owner note | `CLOSED_MOVED`, the note lands in the board history |
 | `status.json`, unverified tasks, no note | `REJECTED`, nothing moved; the message names the unverified tasks. Ask the owner once, or leave it open. Never invent a note |

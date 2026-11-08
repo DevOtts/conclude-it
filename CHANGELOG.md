@@ -65,6 +65,11 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   `status.json` counts when any committed version of it was a board.
 - **R3-L3** (round 3) a board left only on a history unrelated to HEAD (`git checkout --orphan`) is
   treated as lost too, and every history lookup uses `--all`.
+- **R3-A1-M6** (round 3) the deleted-board check asked the `--repo` repo, so `--repo` pointing at an
+  empty folder or an unrelated repo, or a package inside a submodule, skipped it. S4 now takes the git
+  top from the package itself (`git -C <pkg.dir> rev-parse --show-toplevel`, the innermost repo) and
+  refuses (usage, exit 2, nothing moved) a package dir outside `--repo`, or one inside a git repo
+  whose top differs from `--repo`'s (a submodule or nested repo), naming the repo to pass instead.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

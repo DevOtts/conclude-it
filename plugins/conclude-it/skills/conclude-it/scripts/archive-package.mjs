@@ -9,6 +9,7 @@
 // Package has status.json  -> guarded close: ledger-card close -> status-write close --by conclude-it --move
 //                             (closed in place when the package is already in 0-done/).
 //   unverified tasks and no --owner-note -> REJECTED, nothing moved, the unverified task ids are named.
+// The package must be inside --repo and in the same git repo (not a submodule or nested repo) -> else usage error.
 // No status.json, but git tracks it at HEAD or it ever existed at that path (any ref) -> DENIED (board deleted; restore it).
 // No status.json, and some other board in the repo vanished without a close (deleted on any ref, or missing from the
 //   working tree; not restored, not in 0-done/, not named by a recorded owner note) -> DENIED: this package may be it,
@@ -218,6 +219,12 @@ export function archive(flags, env = process.env) {
   // R2-A1-M3: the real on-disk path and case (`--dir …/DEMO` on a case-insensitive filesystem opens demo/), so the git
   // lookups and the 0-done target use the name git and the disk know.
   { const dir = real(pkg.dir); pkg = { dir, name: path.basename(dir), done: path.basename(path.dirname(dir)) === '0-done' }; }
+  // R3-A1-M6: the package must be inside --repo, and in the same git repo (not a submodule or a nested clone), so the
+  //   board checks below ask the repo that really holds the package.
+  { const rel = path.relative(root, pkg.dir);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Outcome('USAGE', `package dir ${pkg.dir} is outside --repo ${root}; pass --repo <the repo that holds the package>; nothing moved`, 2);
+    const pkgTop = gitTop(pkg.dir);
+    if (pkgTop && pkgTop !== gitTop(root)) throw new Outcome('USAGE', `${rel} is inside the git repo ${pkgTop} (a submodule or nested repo), not the repo of --repo ${root}; pass --repo ${pkgTop}; nothing moved`, 2); }
   // 1. status.json present: the guarded close (never a bare move).
   if (fs.existsSync(path.join(pkg.dir, 'status.json'))) {
     if (nonEmpty(flags['closeout-rows'])) throw new Outcome('USAGE', 'package has status.json: the board closes it; --closeout-rows is only for packages without a board', 2);
@@ -234,7 +241,7 @@ export function archive(flags, env = process.env) {
   //    had a board, so only the guarded close may archive it (CP-03 A1-M1). Never take the CLOSEOUT path then.
   //    R3-A1-M5: any other board that vanished without a close (deleted on any ref, or missing from the working tree)
   //    may be this package renamed or rewritten, so the CLOSEOUT path also waits for it, unless --owner-note names it.
-  const top = gitTop(root);
+  const top = gitTop(pkg.dir);
   const hist = top ? boardHistory(top, pkg.dir) : null;
   if (hist?.here) throw new Outcome('DENIED', `board deleted: ${hist.here}; ${path.relative(root, path.join(pkg.dir, 'status.json'))} is missing from the working tree; restore the board (git restore, or git checkout <sha> -- <path>) and close through the guarded close; the CLOSEOUT path is not allowed for a package that had a board; nothing moved`);
   let noted = [];
