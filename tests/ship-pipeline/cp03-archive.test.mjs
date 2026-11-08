@@ -51,3 +51,13 @@ test('A1-H1 a hand-set closed board moved by a bare mv is reported by doc-it che
   const a = script('archive-audit.mjs', ['--repo', r.root], { env: docItEnv() });
   assert.match(a.out, /doc-it check archive: 1 finding\(s\)/);
 });
+
+test('A1-H2 an empty board: status-write close --move directly and S4 both refuse without an owner note', () => {
+  const r = mkBoardRepo({ tasks: [] });
+  const before = tree(r.root);
+  const direct = sw(['close', '--by', 'conclude-it', '--move', '--file', r.file], r.root);
+  assert.equal(direct.code, 1, direct.out); assert.match(direct.err, /no tasks, so nothing is verified/);
+  const res = S4(['--repo', r.root, '--impl', 'pkg']);
+  assert.equal(res.code, 1); assert.match(res.err, /^REJECTED: .*no tasks/);
+  assert.deepEqual(tree(r.root), before); assert.equal(fs.existsSync(doneDir(r)), false);
+});

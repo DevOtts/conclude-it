@@ -31,6 +31,8 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   now reports it REJECTED (tampered) when status-write refuses to resume a freeze it did not record
   (needs build-it 4.2.0 with the freeze digest). Step 0 counts every doc-it finding kind, including
   `done_closed_unverified`.
+- **A1-H2** regression: an empty board is refused both by `status-write close --move` directly
+  (build-it 4.2.0) and by S4 without an owner note.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
