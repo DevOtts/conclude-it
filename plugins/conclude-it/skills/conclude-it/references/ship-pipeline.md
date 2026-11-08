@@ -107,6 +107,7 @@ What it does (CONTRACT 3.3); the first output line is the outcome:
 | no `status.json`, `--closeout-rows` | `CLOSEOUT.md` is written from doc-it's template (`doc-it template closeout`; conclude-it keeps no copy), linted with `doc-it check closeout` before it lands, then moved. A row doc-it refuses (e.g. `carried` without a backlog path) → `REJECTED`, nothing written or moved |
 | no `status.json`, a hand-written `CLOSEOUT.md` | linted with `doc-it check closeout`; ok → moved, else `REJECTED` |
 | killed after the freeze, before the move | `PARTIAL_FAILED` (board closed, folder not moved). Re-run the same command: it completes the move with no second close entry |
+| `status.json` with `closed: true` that status-write did not freeze (set by hand, or edited after the freeze) | `REJECTED` (tampered), nothing moved. Reopen it with a note (`status-write reopen --by conclude-it --note ...`) and close it through the guard (CP-03 A1-H1) |
 
 Without doc-it, a package with no `status.json` is `DENIED` with
 `[skip] doc-it not installed: check closeout` — it never moves on an unchecked

@@ -33,7 +33,8 @@ export function audit({ repo, json = false } = {}, env = process.env) {
     const s = docIt(cli, ['check', 'archive', '--root', root, '--summary'], { cwd: root, env });
     const sum = s.out.split('\n').find((l) => l.startsWith('summary: '));
     if (s.code !== 2 && sum) {
-      const n = [...sum.matchAll(/(done_unclosed|done_without_closeout|stale_active|unowned)=(\d+)/g)].reduce((t, m) => t + Number(m[2]), 0);
+      // Every finding kind counts, including kinds newer than this script (e.g. done_closed_unverified); legacy_count is not a finding.
+      const n = [...sum.matchAll(/\b([a-z_]+)=(\d+)/g)].filter((m) => m[1] !== 'legacy_count').reduce((t, m) => t + Number(m[2]), 0);
       const body = s.out.split('\n').filter((l) => l !== '' && l !== sum && l !== 'clean');
       const lines = [n ? `doc-it check archive: ${n} finding(s) (report only; nothing was changed)` : 'doc-it check archive: clean', ...(n ? [sum] : []), ...body];
       return { lines: capLines(lines), findings: n };

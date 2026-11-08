@@ -351,6 +351,9 @@ export function close(flags, env = process.env) {
     // without a second close entry.
     if (fs.existsSync(target)) throw new Fail('close --move refused: 0-done target already exists', 1);
     const r = writer(w(), ['close', '--by', 'conclude-it', '--move', '--file', file], root);
+    // status-write resumes only a freeze it recorded itself (CP-03 A1-H1). A closed flag it cannot prove (set by
+    // hand, or the board edited after the freeze) is tampering, not a PARTIAL_FAILED: REJECTED, nothing moved.
+    if (r.status !== 0 && /tampered/.test(r.stderr || '')) throw new Fail(`REJECTED: close refused: ${pkg.name} is marked closed but status-write did not record that freeze (tampered?): ${(r.stderr || '').trim()}; reopen it with a note and close it through the guard`, 1);
     if (r.status !== 0) throw new Fail(`PARTIAL_FAILED: board closed, folder not moved; resume refused: ${(r.stderr || '').trim()}`, r.status === 3 ? 3 : 1);
     out.push((r.stdout || '').trim() || 'closed');
     out.push(`CLOSED_MOVED ${path.relative(root, target)}`);

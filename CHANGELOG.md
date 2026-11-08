@@ -26,6 +26,12 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   `--dir`, and reports PARTIAL_FAILED when a close dies between the freeze and the move; a re-run
   completes the move.
 
+### Fixed (CP-03 adversarial review, G-2)
+- **A1-H1** a hand-set `closed: true` was resumed as PARTIAL_FAILED and moved. `ledger-card close`
+  now reports it REJECTED (tampered) when status-write refuses to resume a freeze it did not record
+  (needs build-it 4.2.0 with the freeze digest). Step 0 counts every doc-it finding kind, including
+  `done_closed_unverified`.
+
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
   never fixes or writes. Without doc-it: `[skip] doc-it not installed: check archive`, exit 0.
