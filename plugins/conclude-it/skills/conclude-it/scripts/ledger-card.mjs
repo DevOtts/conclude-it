@@ -29,6 +29,49 @@ function parseArgs(argv) {
 }
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
 
+// ---------- regular-file-only reads (CP-03 R6: a FIFO or a /dev symlink as a board must not hang the close) ----------
+// A board file (status.json, CLOSEOUT.md, plan.json, STATUS.md) is read only when it is a regular file of at most
+// BOARD_CAP bytes, never through a symlink: opened O_NONBLOCK | O_NOFOLLOW (so a FIFO opens without waiting for a
+// writer and a symlink is refused by the kernel), then fstat'ed on the same descriptor. Anything else throws
+// Unreadable with a short reason. A missing file is `null` (readRegular) / false (openRegular).
+export const BOARD_CAP = 64 << 20;
+export class Unreadable extends Error {}
+const KIND = (st) => (st.isFIFO() ? 'a FIFO' : st.isCharacterDevice() ? 'a character device' : st.isBlockDevice() ? 'a block device' : st.isSocket() ? 'a socket' : st.isDirectory() ? 'a directory' : st.isSymbolicLink() ? 'a symlink' : 'not a regular file');
+function openRegular(file, cap = BOARD_CAP) {
+  const C = fs.constants;
+  let fd;
+  try { fd = fs.openSync(file, C.O_RDONLY | (C.O_NONBLOCK ?? 0) | (C.O_NOFOLLOW ?? 0)); } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') { let st = null; try { st = fs.lstatSync(file); } catch { return false; } throw new Unreadable(st.isSymbolicLink() ? 'is a symlink (a board is never read through a link)' : `cannot be opened (${e.code})`); }
+    if (e.code === 'ELOOP' || e.code === 'EMLINK' || e.code === 'EFTYPE') throw new Unreadable('is a symlink (a board is never read through a link)');
+    throw new Unreadable(`cannot be opened (${e.code || e.message})`);
+  }
+  let st;
+  try { st = fs.fstatSync(fd); } catch (e) { fs.closeSync(fd); throw new Unreadable(`cannot be read (${e.code || e.message})`); }
+  // No O_NOFOLLOW on this platform: refuse a link by lstat (best effort).
+  if (!C.O_NOFOLLOW) { try { if (fs.lstatSync(file).isSymbolicLink()) { fs.closeSync(fd); throw new Unreadable('is a symlink (a board is never read through a link)'); } } catch (e) { if (e instanceof Unreadable) throw e; } }
+  if (!st.isFile()) { fs.closeSync(fd); throw new Unreadable(`is ${KIND(st)}, not a regular file`); }
+  if (st.size > cap) { fs.closeSync(fd); throw new Unreadable(`is ${st.size} bytes, over the ${cap}-byte limit`); }
+  return fd;
+}
+// True when `file` is present as a regular file; false when absent; throws Unreadable for anything else.
+export function regularFile(file, cap = BOARD_CAP) { const fd = openRegular(file, cap); if (fd === false) return false; fs.closeSync(fd); return true; }
+export function readRegular(file, cap = BOARD_CAP) {
+  const fd = openRegular(file, cap); if (fd === false) return null;
+  try {
+    const chunks = []; let total = 0; const buf = Buffer.alloc(1 << 16);
+    for (;;) {
+      let n;
+      try { n = fs.readSync(fd, buf, 0, buf.length, null); } catch (e) { if (e.code === 'EAGAIN') throw new Unreadable('cannot be read without blocking'); throw new Unreadable(`cannot be read (${e.code || e.message})`); }
+      if (n === 0) break;
+      total += n; if (total > cap) throw new Unreadable(`grew past the ${cap}-byte limit while being read`);
+      chunks.push(Buffer.from(buf.subarray(0, n)));
+    }
+    return Buffer.concat(chunks).toString('utf8');
+  } finally { fs.closeSync(fd); }
+}
+// Present at all (lstat): a dangling symlink, a FIFO or a device counts as present (existsSync would follow the link).
+export const present = (p) => { try { fs.lstatSync(p); return true; } catch { return false; } };
+
 // ---------- card format (same as init-it's ledger.mjs; pinned by both test suites) ----------
 function stripComment(v) {
   let depth = 0; let q = null;
@@ -305,7 +348,7 @@ export function upgrade(flags, env = process.env) {
     for (const n of result.impl) {
       const d = implDir(root, n); if (!d) { warn.push(`warning: implementation ${n} not found; ended_at not set`); continue; }
       const f = path.join(d.dir, 'status.json');
-      let doc; try { doc = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { warn.push(`warning: ${path.relative(root, f)} missing or invalid; ended_at not set`); continue; }
+      let doc; try { const t = readRegular(f); if (t === null) throw new Error('missing'); doc = JSON.parse(t); if (!doc || typeof doc !== 'object') throw new Error('not an object'); } catch { warn.push(`warning: ${path.relative(root, f)} missing or invalid; ended_at not set`); continue; }
       const s = (doc.sessions || []).find((x) => x.session_id === result.sid);
       if (!s) { warn.push(`warning: session ${result.sid} not registered in ${path.relative(root, f)}; ended_at not set`); continue; }
       if (s.ended_at) continue;
@@ -339,8 +382,13 @@ export function close(flags, env = process.env) {
   const root = path.resolve(flags.repo || process.cwd());
   const pkg = locatePackage(root, flags);
   const file = path.join(pkg.dir, 'status.json');
-  if (!fs.existsSync(file)) throw new Fail(`no status.json for implementation ${pkg.name}`, 2);
-  const readDoc = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { throw new Fail(`invalid JSON in ${file}: ${e.message}`, 1); } };
+  if (!present(file)) throw new Fail(`no status.json for implementation ${pkg.name}`, 2);
+  // CP-03 R6: the board is read only as a regular file (a FIFO or a /dev symlink must not hang the close).
+  const readDoc = () => {
+    let text; try { text = readRegular(file); } catch (e) { if (e instanceof Unreadable) throw new Fail(`REJECTED: close refused: unreadable board: ${file} ${e.message}; nothing moved`, 1); throw e; }
+    if (text === null) throw new Fail(`no status.json for implementation ${pkg.name}`, 2);
+    try { const j = JSON.parse(text); if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('not a JSON object'); return j; } catch (e) { throw new Fail(`invalid JSON in ${file}: ${e.message}`, 1); }
+  };
   const doc = readDoc();
   const note = nonEmpty(flags['owner-note']) ? flags['owner-note'] : null;
   const target = path.join(path.dirname(pkg.dir), '0-done', pkg.name);
@@ -351,6 +399,9 @@ export function close(flags, env = process.env) {
     // without a second close entry.
     if (fs.existsSync(target)) throw new Fail('close --move refused: 0-done target already exists', 1);
     const r = writer(w(), ['close', '--by', 'conclude-it', '--move', '--file', file], root);
+    // status-write resumes only a freeze it recorded itself (CP-03 A1-H1). A closed flag it cannot prove (set by
+    // hand, or the board edited after the freeze) is tampering, not a PARTIAL_FAILED: REJECTED, nothing moved.
+    if (r.status !== 0 && /tampered/.test(r.stderr || '')) throw new Fail(`REJECTED: close refused: ${pkg.name} is marked closed but status-write did not record that freeze (tampered?): ${(r.stderr || '').trim()}; reopen it with a note and close it through the guard`, 1);
     if (r.status !== 0) throw new Fail(`PARTIAL_FAILED: board closed, folder not moved; resume refused: ${(r.stderr || '').trim()}`, r.status === 3 ? 3 : 1);
     out.push((r.stdout || '').trim() || 'closed');
     out.push(`CLOSED_MOVED ${path.relative(root, target)}`);

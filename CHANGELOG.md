@@ -3,7 +3,17 @@
 All notable changes to conclude-it are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 2.2.0 — 2026-11-07
+
+Minor release, from do-it 1.1: guarded archive S4 (A1-02, A1-04), Step 0 doc-it audit (A1-03),
+close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), and the
+`[skip] doc-it not installed` rule (K2-03, D14).
+
+### Requires
+- build-it >= 4.2.0 for close in place (`status-write close` without `--move`) and the crash-safe
+  `close --move`.
+- doc-it >= 0.1.0 is optional; without it the doc-it steps print `[skip] doc-it not installed: ...`
+  and exit 0.
 
 ### Changed
 - S4 archive has one way into `0-done/`: `scripts/archive-package.mjs`. A package with `status.json`
@@ -15,6 +25,87 @@ All notable changes to conclude-it are documented here. This project adheres to
 - `ledger-card close` closes a package already in `0-done/` in place (no `--move`), accepts
   `--dir`, and reports PARTIAL_FAILED when a close dies between the freeze and the move; a re-run
   completes the move.
+
+### Fixed (CP-03 adversarial review, G-2)
+- **A1-H1** a hand-set `closed: true` was resumed as PARTIAL_FAILED and moved. `ledger-card close`
+  now reports it REJECTED (tampered) when status-write refuses to resume a freeze it did not record
+  (needs build-it 4.2.0 with the freeze digest). Step 0 counts every doc-it finding kind, including
+  `done_closed_unverified`.
+- **A1-H2** regression: an empty board is refused both by `status-write close --move` directly
+  (build-it 4.2.0) and by S4 without an owner note.
+- **A1-M1** deleting a tracked `status.json` sent the package down the CLOSEOUT path. S4 now checks
+  git: a board tracked at HEAD, or present in the package's history, but missing from the working
+  tree is DENIED (board deleted; restore it and use the guarded close). Never the CLOSEOUT path.
+- **A1-M2** regression: CLOSEOUT rows with `shipped` evidence "yes" or a `dropped` reason "."
+  are REJECTED by doc-it `check closeout` (doc-it's stricter evidence lint), nothing written.
+- **A1-L1** S4 refuses a symlinked package dir (the link would move, the content would not).
+- **R2-A1-M3** (round 2) a deleted board escaped the git check through a rename (`git mv` + `git rm`
+  in one commit), an uncommitted `mv` + `rm`, or `--dir …/DEMO` on a case-insensitive filesystem.
+  S4 now resolves the package to its real on-disk path and case (`realpath.native`), matches git
+  paths case-insensitively when `core.ignorecase` is set, follows every tracked file of the package
+  (`git log --follow`) to the folders it lived in and DENIES when any of them held a `status.json`,
+  and DENIES an uncommitted deletion of a `status.json` whose folder is gone or shares files with
+  the package.
+- **R2-L2** (round 2) a board git never saw (never committed, or no git) could be deleted to open the
+  CLOSEOUT path. S4 now DENIES it when the package still holds a `STATUS.md` rendered by the board
+  writer (its marker line) or a `plan.json`. A hand-written legacy `STATUS.md` does not block.
+- **R2-L3** (round 2) regression: a freeze whose owner note is rewritten is REJECTED on the re-run
+  (the fix is in build-it: `board_sha256` covers the close entry).
+- **R3-A1-M5** (round 3) the rename follow was beaten by 301 new files (the 300-file cap) or by a
+  rename made together with a rewrite (below git's 50% rename similarity). S4 no longer follows files.
+  It runs one uncapped history query over every `status.json` in the repo, on all refs
+  (`git log --all -m --no-renames --diff-filter=D`; with `--no-renames` a rename is a delete), plus
+  every `status.json` deleted from HEAD or the index but not committed. A board that vanished this way
+  and is not accounted for (a `status.json` back at that path, the path inside `0-done/`,
+  `<parent>/0-done/<name>/status.json` on disk, or an owner note recorded in a `0-done/` CLOSEOUT)
+  DENIES the CLOSEOUT path for every package, whether or not its folder still exists (a stub folder
+  would otherwise hide it). `--owner-note` naming that board's folder lets the archive go on; the
+  note is recorded in the CLOSEOUT (`<!-- archive-package owner-note boards: … -->` plus a visible
+  line), so later archives count the board as accounted for. Outside `docs/implementation(s)/` a
+  `status.json` counts when any committed version of it was a board.
+- **R3-L3** (round 3) a board left only on a history unrelated to HEAD (`git checkout --orphan`) is
+  treated as lost too, and every history lookup uses `--all`.
+- **R3-A1-M6** (round 3) the deleted-board check asked the `--repo` repo, so `--repo` pointing at an
+  empty folder or an unrelated repo, or a package inside a submodule, skipped it. S4 now takes the git
+  top from the package itself (`git -C <pkg.dir> rev-parse --show-toplevel`, the innermost repo) and
+  refuses (usage, exit 2, nothing moved) a package dir outside `--repo`, or one inside a git repo
+  whose top differs from `--repo`'s (a submodule or nested repo), naming the repo to pass instead.
+- **R4-A1-M7** (round 4) any file named `status.json` at a lost board's old path or in
+  `0-done/<name>/` counted as accounting for it: an empty untracked placeholder, or a copy of another
+  package's closed board. Now a board back at its old path accounts only when it is a status board whose
+  `implementation` is its folder's name and git tracks it or its bytes are a committed version of that
+  path. A `0-done/<name>/status.json` accounts only when its `implementation` is `<name>`, it is
+  `closed: true` backed by a close entry by conclude-it with a `board_sha256`, and build-it
+  `status-write validate` accepts it (run through `DOIT_STATUS_WRITE` or an installed build-it; when
+  the writer cannot be found S4 is `DENIED: cannot verify`). A board deleted from a `0-done/` folder
+  (an archived package moved back out) is no longer skipped. A repo whose archived boards predate the
+  freeze (legacy `closed: false`) is DENIED until the owner closes them in place
+  (`archive-package --impl <name> [--owner-note …]`) or names them once in `--owner-note`.
+- **R4-A1-M8** (round 4) in a shallow clone the commit that deleted a board is cut off, and every git
+  failure read as "no history" (`g()` returned `''`), so `GIT_CEILING_DIRECTORIES` or a broken repo
+  skipped every board check. On the no-board path S4 now DENIES a shallow clone ("shallow clone: board
+  history unknown; run git fetch --unshallow, or pass --owner-note"; the note is recorded in the
+  CLOSEOUT), DENIES (`git error`) any history query that exits with a code it is not expected to, and
+  DENIES when git sees `--repo` but not the package from its own folder. Outside git altogether
+  (neither `--repo` nor the package is in a repo) the history checks are skipped, as before.
+- **R4-L7** (round 4) `--owner-note` matched a board's folder case-insensitively, so on a
+  case-sensitive repo `DEMO` accounted for `demo`'s board. It now matches case-insensitively only
+  when `core.ignorecase` is set.
+- **R6-A1-M9** (round 6) git quotes a path with non-ASCII bytes, a tab, a newline or a `"` unless
+  asked for NUL-separated output, so a board lost under `migração/` came back as
+  `"…/migra\303\247\303\243o/status.json"`, was skipped, and the boardless package that replaced it
+  took the CLOSEOUT path (`CLOSED_MOVED`). Every git query whose output S4 or `debrief-doc-check`
+  parses as paths now uses `-z` (`log -z --name-only`, `log -z --raw`, `ls-files -z`,
+  `diff --name-only -z`) and runs with `-c core.quotePath=false`; `rev-parse --show-toplevel` drops
+  only git's trailing newline. Pathspecs on a case-insensitive repo are `:(icase,literal)`, so a
+  folder named `a[1]` no longer also matches `a1`.
+- **R6 FIFO class** (round 6) a FIFO or a `/dev/zero` symlink as a package's `status.json`,
+  `CLOSEOUT.md`, `STATUS.md`, or as a lost board's `0-done/<name>/status.json`, hung archive-package
+  and `ledger-card close` (a blocking read); a dangling symlink `status.json` read as "no board". Board
+  files are now read only as regular files of at most 64 MiB, opened `O_NONBLOCK | O_NOFOLLOW` and
+  checked with `fstat` on the same descriptor. Anything else is `DENIED: unreadable board` (archive-package)
+  or `REJECTED: … unreadable board` (`ledger-card close`), at once, nothing moved. A CLOSEOUT in another
+  `0-done/` folder that is not a regular file is not read (its owner-note record does not count).
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it
