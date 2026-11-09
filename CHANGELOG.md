@@ -99,6 +99,13 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
   `diff --name-only -z`) and runs with `-c core.quotePath=false`; `rev-parse --show-toplevel` drops
   only git's trailing newline. Pathspecs on a case-insensitive repo are `:(icase,literal)`, so a
   folder named `a[1]` no longer also matches `a1`.
+- **R6 FIFO class** (round 6) a FIFO or a `/dev/zero` symlink as a package's `status.json`,
+  `CLOSEOUT.md`, `STATUS.md`, or as a lost board's `0-done/<name>/status.json`, hung archive-package
+  and `ledger-card close` (a blocking read); a dangling symlink `status.json` read as "no board". Board
+  files are now read only as regular files of at most 64 MiB, opened `O_NONBLOCK | O_NOFOLLOW` and
+  checked with `fstat` on the same descriptor. Anything else is `DENIED: unreadable board` (archive-package)
+  or `REJECTED: … unreadable board` (`ledger-card close`), at once, nothing moved. A CLOSEOUT in another
+  `0-done/` folder that is not a regular file is not read (its owner-note record does not count).
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

@@ -19,6 +19,8 @@
 // No status.json and the history cannot be read: any git failure, git seeing --repo but not the package folder, or a
 //   shallow clone (unless --owner-note takes it on; the note is recorded in the CLOSEOUT) -> DENIED. Outside git
 //   altogether (neither --repo nor the package is in a repo) the history checks are skipped.
+// A package board file (status.json, CLOSEOUT.md, plan.json, STATUS.md) or a board read during the history checks
+//   that is not a regular file (FIFO, symlink, device; or over 64 MiB) -> DENIED: unreadable board, never waited on.
 // No status.json:
 //   CLOSEOUT.md present     -> `doc-it check closeout`; ok -> moved; problems -> REJECTED, nothing moved.
 //   --closeout-rows given   -> CLOSEOUT.md is written from `doc-it template closeout` (never a local copy), one row
@@ -34,7 +36,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { close as guardedClose, resolveStatusWrite } from './ledger-card.mjs';
+import { close as guardedClose, resolveStatusWrite, readRegular, regularFile, present, Unreadable } from './ledger-card.mjs';
 import { locateDocIt, skipLine, docIt } from './docit-locate.mjs';
 
 class Outcome extends Error { constructor(kind, msg, code = 1) { super(`${kind}: ${msg}`); this.kind = kind; this.exitCode = code; } }
@@ -181,12 +183,18 @@ function boardHistory(top, dir, env = process.env) {
     let ents = []; try { ents = fs.readdirSync(doneDir, { withFileTypes: true }); } catch { return; }
     for (const e of ents) {
       if (!e.isDirectory()) continue;
-      let txt = ''; try { txt = fs.readFileSync(path.join(doneDir, e.name, 'CLOSEOUT.md'), 'utf8'); } catch { continue; }
+      // A CLOSEOUT that is not a regular file is not read (its record does not count: fail closed, never a hang).
+      let txt = null; try { txt = readRegular(path.join(doneDir, e.name, 'CLOSEOUT.md')); } catch { continue; }
+      if (txt === null) continue;
       for (const m of txt.matchAll(OWNER_NOTE_RECORD)) for (const b of m[1].split(',').map((x) => x.trim()).filter(Boolean)) records.add(icase ? b.toLowerCase() : b);
     }
   };
   // R4-A1-M7: is the status.json at repo path `rel` the board of the package named `name`?
-  const readBoard = (rel) => { try { const j = JSON.parse(fs.readFileSync(path.join(top, rel), 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) && Array.isArray(j.waves) ? j : null; } catch { return null; } };
+  // CP-03 R6: read only as a regular file; a FIFO, a symlink or a device there is DENIED (unreadable board), never waited on.
+  const readBoard = (rel) => {
+    let txt; try { txt = readRegular(path.join(top, rel)); } catch (e) { if (e instanceof Unreadable) throw unreadable(rel, e); throw e; }
+    try { const j = JSON.parse(txt ?? ''); return j && typeof j === 'object' && !Array.isArray(j) && Array.isArray(j.waves) ? j : null; } catch { return null; }
+  };
   const sameName = (a, b) => typeof a === 'string' && (icase ? a.toLowerCase() === b.toLowerCase() : a === b);
   // An active board back at its old path: named for its folder, and tracked or byte-equal to a committed version.
   const liveBoard = (rel, name) => {
@@ -234,7 +242,7 @@ function boardHistory(top, dir, env = process.env) {
     // A status.json deeper inside an archived package (not its board) is the archived package's business.
     if (!inDone && p.split('/').some((x) => x.toLowerCase() === '0-done')) continue;
     // R4: a board deleted from a 0-done/ folder (an archived package moved back out) is lost too, unless it is back.
-    if (fs.existsSync(path.join(top, p))) {
+    if (present(path.join(top, p))) {
       const why = inDone ? frozenBoard(p, name) : liveBoard(p, name);
       if (!why) continue;
       how += `; the status.json now at that path ${why}`;
@@ -242,7 +250,7 @@ function boardHistory(top, dir, env = process.env) {
     if (!inDone) {
       const doneDir = path.join(top, parent, '0-done');
       const doneRel = path.posix.join(parent, '0-done', name, 'status.json');
-      if (fs.existsSync(path.join(top, doneRel))) {
+      if (present(path.join(top, doneRel))) {
         const why = frozenBoard(doneRel, name);
         if (!why) continue;
         how += `; ${doneRel} ${why}`;
@@ -278,11 +286,16 @@ function ownerRecord(orphans, note) {
 const RENDER_MARKER = '<!-- generated from status.json by status-write';
 function boardTrace(dir) {
   for (const f of [path.join(dir, 'STATUS.md'), path.join(dir, 'delivery', 'STATUS.md')]) {
-    try { if (fs.readFileSync(f, 'utf8').slice(0, 200).trimStart().startsWith(RENDER_MARKER)) return f; } catch { /* absent */ }
+    if ((readRegular(f) ?? '').slice(0, 200).trimStart().startsWith(RENDER_MARKER)) return f; // regular (checked up front)
   }
   const plan = path.join(dir, 'plan.json');
-  return fs.existsSync(plan) ? plan : null;
+  return present(plan) ? plan : null;
 }
+// CP-03 R6: the package's board files are read only as regular files of bounded size. A FIFO, a symlink (to /dev/zero,
+// /dev/stdin or anything else) or a device as status.json, CLOSEOUT.md, plan.json or STATUS.md is DENIED up front,
+// before anything reads, writes or appends to it.
+const BOARD_FILES = ['status.json', 'CLOSEOUT.md', 'plan.json', 'STATUS.md', path.join('delivery', 'STATUS.md')];
+const unreadable = (rel, e) => new Outcome('DENIED', `unreadable board: ${rel} ${e.message}; a board file is read only as a regular file (no FIFO, symlink or device); replace it with the real file and re-run; nothing moved`);
 const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p; } };
 // The innermost git repo holding `cwd` (a submodule's own top, not the outer repo's), real path: { top }. Outside any
 // repo: { none } (git says "not a git repository"). Any other failure (git missing, a broken repo, dubious ownership,
@@ -329,8 +342,11 @@ export function archive(flags, env = process.env) {
     if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Outcome('USAGE', `package dir ${pkg.dir} is outside --repo ${root}; pass --repo <the repo that holds the package>; nothing moved`, 2);
     const pkgTop = gitTop(pkg.dir).top;
     if (pkgTop && pkgTop !== gitTop(root).top) throw new Outcome('USAGE', `${rel} is inside the git repo ${pkgTop} (a submodule or nested repo), not the repo of --repo ${root}; pass --repo ${pkgTop}; nothing moved`, 2); }
+  for (const f of BOARD_FILES) {
+    try { regularFile(path.join(pkg.dir, f)); } catch (e) { if (e instanceof Unreadable) throw unreadable(path.relative(root, path.join(pkg.dir, f)), e); throw e; }
+  }
   // 1. status.json present: the guarded close (never a bare move).
-  if (fs.existsSync(path.join(pkg.dir, 'status.json'))) {
+  if (present(path.join(pkg.dir, 'status.json'))) {
     if (nonEmpty(flags['closeout-rows'])) throw new Outcome('USAGE', 'package has status.json: the board closes it; --closeout-rows is only for packages without a board', 2);
     let r;
     try { r = guardedClose({ repo: root, dir: pkg.dir, 'owner-note': flags['owner-note'] }, env); } catch (e) {
@@ -385,8 +401,8 @@ export function archive(flags, env = process.env) {
   // CLOSEOUT first.
   const closeout = path.join(pkg.dir, 'CLOSEOUT.md');
   const hasRows = nonEmpty(flags['closeout-rows']);
-  if (!fs.existsSync(closeout) && !hasRows) throw new Outcome('DENIED', `${path.relative(root, pkg.dir)} has no status.json and no CLOSEOUT.md; write the CLOSEOUT (pass --closeout-rows with one row per piece) or ask the owner once; nothing moved`);
-  if (fs.existsSync(closeout) && hasRows) throw new Outcome('USAGE', `${path.relative(root, closeout)} already exists; edit it or drop --closeout-rows`, 2);
+  if (!present(closeout) && !hasRows) throw new Outcome('DENIED', `${path.relative(root, pkg.dir)} has no status.json and no CLOSEOUT.md; write the CLOSEOUT (pass --closeout-rows with one row per piece) or ask the owner once; nothing moved`);
+  if (present(closeout) && hasRows) throw new Outcome('USAGE', `${path.relative(root, closeout)} already exists; edit it or drop --closeout-rows`, 2);
   const cli = locateDocIt(env);
   if (!cli) throw new Outcome('DENIED', `doc-it is required to write and check the CLOSEOUT; nothing moved\n${skipLine('check closeout')}`);
   if (hasRows) {
