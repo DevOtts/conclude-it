@@ -91,6 +91,14 @@ close in place for `0-done/` packages (A1-05), debrief doc-it expiry (K2-01), an
 - **R4-L7** (round 4) `--owner-note` matched a board's folder case-insensitively, so on a
   case-sensitive repo `DEMO` accounted for `demo`'s board. It now matches case-insensitively only
   when `core.ignorecase` is set.
+- **R6-A1-M9** (round 6) git quotes a path with non-ASCII bytes, a tab, a newline or a `"` unless
+  asked for NUL-separated output, so a board lost under `migração/` came back as
+  `"…/migra\303\247\303\243o/status.json"`, was skipped, and the boardless package that replaced it
+  took the CLOSEOUT path (`CLOSED_MOVED`). Every git query whose output S4 or `debrief-doc-check`
+  parses as paths now uses `-z` (`log -z --name-only`, `log -z --raw`, `ls-files -z`,
+  `diff --name-only -z`) and runs with `-c core.quotePath=false`; `rev-parse --show-toplevel` drops
+  only git's trailing newline. Pathspecs on a case-insensitive repo are `:(icase,literal)`, so a
+  folder named `a[1]` no longer also matches `a1`.
 
 ### Added
 - Step 0 archive audit: `scripts/archive-audit.mjs` runs `doc-it check archive` and reports; it

@@ -20,8 +20,10 @@ const HOMES = 'fact-kind homes (DS-1)';
 function touchedPages(root, flags) {
   if (flags.pages) return [...new Set(flags.pages.split(',').map((p) => p.trim()).filter(Boolean).map((p) => path.relative(root, path.resolve(root, p))))];
   if (!flags.since) throw new Usage('--pages <a,b> or --since <git ref> is required');
-  const g = (...a) => { const r = spawnSync('git', a, { cwd: root, encoding: 'utf8' }); if (r.status !== 0) throw new Usage(`git ${a.join(' ')}: ${(r.stderr || '').trim()}`); return r.stdout.split('\n').filter(Boolean); };
-  return [...new Set([...g('diff', '--name-only', flags.since), ...g('ls-files', '--others', '--exclude-standard')])];
+  // CP-03 R6-A1-M9: paths come back NUL-separated and unquoted (`-z`, core.quotePath=false), so a page with a
+  // non-ASCII, space, tab or newline name matches doc-it's path for it.
+  const g = (...a) => { const r = spawnSync('git', ['-c', 'core.quotePath=false', ...a], { cwd: root, encoding: 'utf8', maxBuffer: 256 << 20 }); if (r.status !== 0) throw new Usage(`git ${a.join(' ')}: ${(r.stderr || '').trim()}`); return r.stdout.split('\0').filter(Boolean); };
+  return [...new Set([...g('diff', '--name-only', '-z', flags.since, '--'), ...g('ls-files', '-z', '--others', '--exclude-standard')])];
 }
 
 export function check(flags, env = process.env) {

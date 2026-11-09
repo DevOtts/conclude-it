@@ -103,9 +103,12 @@ const BOARD_ROOTS = ['docs/implementations', 'docs/implementation'];
 const OWNER_NOTE_RECORD = /<!--\s*archive-package owner-note boards:\s*([^>]*?)\s*-->/g;
 // R4-A1-M8: every git query fails closed. A query that exits with a code it is not expected to (or cannot run) is
 // DENIED (git error, board history unknown), never read as "git knows nothing".
+// R6-A1-M9: every query runs with core.quotePath=false, and every query whose output is parsed as paths uses `-z`
+// (git C-quotes a non-ASCII, tab, newline or `"` path without -z, so `migração/status.json` came back as
+// `"…/migra\303\247\303\243o/status.json"` and was skipped).
 function gitRunner(top) {
   return (args, ok = [0]) => {
-    const r = spawnSync('git', args, { cwd: top, encoding: 'utf8', maxBuffer: 256 << 20 });
+    const r = spawnSync('git', ['-c', 'core.quotePath=false', ...args], { cwd: top, encoding: 'utf8', maxBuffer: 256 << 20 });
     if (r.error || r.status === null || !ok.includes(r.status)) {
       const why = r.error ? r.error.message : r.status === null ? `killed by ${r.signal}` : `exit ${r.status}: ${String(r.stderr || '').trim().split('\n')[0]}`;
       throw new Outcome('DENIED', `git error: git ${args.slice(0, 3).join(' ')} failed in ${top} (${why}); the board history is unknown, so the CLOSEOUT path is not allowed; fix git and re-run; nothing moved`);
@@ -113,42 +116,52 @@ function gitRunner(top) {
     return r.status === 0 ? r.stdout : '';
   };
 }
+// `git log -z --format=%H --name-only` output: `<sha>\0\n<path>\0<path>\0<sha>\0\n<path>\0…`. A path token is
+// any token that is not a commit id (every path asked for ends in status.json, so none looks like one); the `\n`
+// git puts after a commit id's NUL is stripped from the next token only, so a path that itself starts with a
+// newline survives. Yields [sha, path].
+function* logPaths(out) {
+  let cur = ''; let afterSha = false;
+  for (let t of out.split('\0')) {
+    if (afterSha && t.startsWith('\n')) t = t.slice(1);
+    const m = /^\n?([0-9a-f]{40})$/.exec(t);
+    if (m) { cur = m[1]; afterSha = true; continue; }
+    afterSha = false;
+    if (t) yield [cur, t];
+  }
+}
+// NUL-separated path lists (`ls-files -z`, `diff --name-only -z`).
+const zList = (out) => out.split('\0').filter(Boolean);
 function boardHistory(top, dir, env = process.env) {
   const run = gitRunner(top);
   const g = (...a) => run(a);
   const icase = run(['config', '--bool', 'core.ignorecase'], [0, 1]).trim() === 'true';
   const hasHead = run(['rev-parse', '--verify', '-q', 'HEAD'], [0, 1]).trim() !== '';
-  const ps = (p) => (icase ? `:(icase)${p}` : `:(literal)${p}`);
+  const ps = (p) => (icase ? `:(icase,literal)${p}` : `:(literal)${p}`);
   const allBoards = icase ? ':(glob,icase)**/status.json' : ':(glob)**/status.json';
   const relDir = path.relative(top, dir).split(path.sep).join('/');
   if (!relDir || relDir.startsWith('..')) return null;
   const board = `${relDir}/status.json`;
   // 1. this path
-  if (g('ls-files', '--', ps(board)).trim()) return { here: `${board} is tracked at HEAD` };
+  if (zList(g('ls-files', '-z', '--', ps(board))).length) return { here: `${board} is tracked at HEAD` };
   const sha = g('log', '--all', '-1', '--format=%H', '--', ps(board)).trim();
   if (sha) return { here: `${board} existed in commit ${sha.slice(0, 12)}` };
   // 2. history-wide
   const lost = new Map(); // path -> how
-  let cur = '';
-  for (const l of g('log', '--all', '-m', '--no-renames', '--diff-filter=D', '--format=%H', '--name-only', '--', allBoards).split('\n')) {
-    const t = l.trim(); if (!t) continue;
-    if (/^[0-9a-f]{40}$/.test(t)) { cur = t; continue; }
+  for (const [cur, t] of logPaths(g('log', '-z', '--all', '-m', '--no-renames', '--diff-filter=D', '--format=%H', '--name-only', '--', allBoards))) {
     if (path.posix.basename(t).toLowerCase() === 'status.json' && !lost.has(t)) lost.set(t, `was deleted in commit ${cur.slice(0, 12)}`);
   }
   // R3-L3: a board added only in commits that share no history with HEAD (`git checkout --orphan` leaves the old
   //   branch holding it, and nothing on HEAD's line ever deletes it). A board on an ordinary branch that shares history
   //   with HEAD is work in progress there, not lost.
-  cur = '';
   const unrelated = new Map();
-  for (const l of g('log', '--all', '-m', '--no-renames', '--diff-filter=A', '--format=%H', '--name-only', '--', allBoards).split('\n')) {
-    const t = l.trim(); if (!t) continue;
-    if (/^[0-9a-f]{40}$/.test(t)) { cur = t; continue; }
+  for (const [cur, t] of logPaths(g('log', '-z', '--all', '-m', '--no-renames', '--diff-filter=A', '--format=%H', '--name-only', '--', allBoards))) {
     if (lost.has(t) || path.posix.basename(t).toLowerCase() !== 'status.json') continue;
     if (!unrelated.has(cur)) unrelated.set(cur, !hasHead || !run(['merge-base', 'HEAD', cur], [0, 1]).trim());
     if (unrelated.get(cur)) lost.set(t, `lives only in commit ${cur.slice(0, 12)}, on a history unrelated to HEAD (an orphan branch)`);
   }
   // uncommitted: deleted from HEAD (staged or not), or added to the index and then deleted on disk
-  const unc = (...a) => g('diff', '--no-renames', '--diff-filter=D', '--name-only', '-z', ...a, '--', allBoards).split('\0');
+  const unc = (...a) => zList(g('diff', '--no-renames', '--diff-filter=D', '--name-only', '-z', ...a, '--', allBoards));
   for (const t of new Set([...(hasHead ? unc('HEAD') : []), ...unc()])) {
     if (t && path.posix.basename(t).toLowerCase() === 'status.json' && !lost.has(t)) lost.set(t, 'is deleted in the working tree (uncommitted)');
   }
@@ -157,10 +170,10 @@ function boardHistory(top, dir, env = process.env) {
   // it counts without looking (fail closed).
   const isBoard = (p) => {
     // only commits where the path exists (added or modified), so every `show` below must succeed
-    const shas = g('log', '--all', '--no-renames', '--diff-filter=AM', '--format=%H', '--', ps(p)).split('\n').map((x) => x.trim()).filter(Boolean);
+    const shas = g('log', '--all', '--no-renames', '--diff-filter=AM', '--format=%H', '--', ps(p)).split('\n').map((x) => x.trim()).filter(Boolean); // commit ids only, no paths
     if (shas.length > 50) return true;
     const texts = shas.map((s) => g('show', `${s}:${p}`));
-    if (g('ls-files', '--', ps(p)).trim()) texts.push(g('show', `:${p}`));
+    if (zList(g('ls-files', '-z', '--', ps(p))).length) texts.push(g('show', `:${p}`));
     return texts.some((txt) => { try { const j = JSON.parse(txt); return !!j && typeof j === 'object' && 'implementation' in j && Array.isArray(j.waves); } catch { return false; } });
   };
   const records = new Set();
@@ -180,9 +193,17 @@ function boardHistory(top, dir, env = process.env) {
     const j = readBoard(rel);
     if (!j) return 'is not a status board';
     if (!sameName(j.implementation, name)) return `names "${String(j.implementation)}", not ${name}`;
-    if (g('ls-files', '--', ps(rel)).trim()) return null;
+    if (zList(g('ls-files', '-z', '--', ps(rel))).length) return null;
     const blob = g('hash-object', '--', rel).trim();
-    const known = new Set(g('log', '--all', '--no-renames', '--format=', '--raw', '--no-abbrev', '--', ps(rel)).split('\n').flatMap((l) => l.split(/\s+/).slice(2, 4)));
+    // `log --raw -z --format=`: `:<modes> <old> <new> <st>\0<path>\0` per entry (one path each with --no-renames).
+    // Read strictly in pairs (status, then its path), so a path token is never taken for a status token.
+    const known = new Set();
+    const toks = g('log', '-z', '--all', '--no-renames', '--format=', '--raw', '--no-abbrev', '--', ps(rel)).split('\0');
+    for (let i = 0; i + 1 < toks.length; i += 2) {
+      const m = /^\n?:\d{6} \d{6} ([0-9a-f]{40}) ([0-9a-f]{40}) [A-Z]\d*$/.exec(toks[i]);
+      if (!m) throw new Outcome('DENIED', `git error: unexpected git log --raw output for ${rel}; the board history is unknown, so the CLOSEOUT path is not allowed; nothing moved`);
+      known.add(m[1]); known.add(m[2]);
+    }
     return known.has(blob) ? null : 'is untracked and matches no committed version of that path';
   };
   // A board in 0-done/: named for its folder and frozen by the writer (validate checks the board_sha256 digest).
@@ -267,8 +288,10 @@ const real = (p) => { try { return fs.realpathSync.native(p); } catch { return p
 // repo: { none } (git says "not a git repository"). Any other failure (git missing, a broken repo, dubious ownership,
 // a ceiling that hides the repo from a subfolder is caught by the caller): { error } (R4-A1-M8).
 function gitTop(cwd) {
-  const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
-  if (!r.error && r.status === 0 && r.stdout.trim()) return { top: real(r.stdout.trim()) };
+  const r = spawnSync('git', ['-c', 'core.quotePath=false', 'rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
+  // R6-A1-M9: strip only git's one trailing newline (a top folder may end in a space).
+  const top = !r.error && r.status === 0 ? r.stdout.replace(/\r?\n$/, '') : '';
+  if (top) return { top: real(top) };
   const msg = r.error ? r.error.message : String(r.stderr || '').trim().split('\n')[0] || `exit ${r.status}`;
   if (!r.error && /not a git repository/i.test(msg)) return { none: msg };
   return { error: msg };
